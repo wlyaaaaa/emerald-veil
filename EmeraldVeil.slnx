@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EmeraldVeil.App/EmeraldVeil.App.csproj" />
+    <Project Path="src/EmeraldVeil.Core/EmeraldVeil.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EmeraldVeil.Core.Tests/EmeraldVeil.Core.Tests.csproj" />
+  </Folder>
+</Solution>
