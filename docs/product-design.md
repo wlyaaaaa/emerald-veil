@@ -39,6 +39,7 @@ GetLastInputInfo + GetTickCount/GetTickCount64
 - `EmeraldVeil.Core` reconstructs a conservative 64-bit idle timeline from Win32's 32-bit last-input timestamp. A failed or ambiguous read keeps the veil hidden.
 - `EmeraldVeil.App` owns the Windows session monitor, tray icon, startup setting, and WPF presentation.
 - The WPF window uses `WS_EX_LAYERED`, `WS_EX_TRANSPARENT`, `WS_EX_NOACTIVATE`, and `WS_EX_TOOLWINDOW`, plus `HTTRANSPARENT` and `MA_NOACTIVATE` message handling.
+- The application manifest declares Per-Monitor V2 DPI awareness; the overlay is repositioned when display or DPI messages arrive.
 - The rendering timer runs at about 15 FPS only while the veil is visible. Hidden mode stops animation and hides the window.
 - Startup is a direct per-user WinExe launch from a stable LocalAppData installation directory.
 
