@@ -14,7 +14,8 @@ $ErrorActionPreference = 'Stop'
 $runKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $approvedKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
 $ownerKeyPath = 'HKCU:\Software\EmeraldVeil'
-$valueName = 'Emerald Veil'
+$valueName = 'Emerald Veil Native Bubbles'
+$legacyValueName = 'Emerald Veil'
 $targetPath = Join-Path ([System.IO.Path]::GetFullPath($InstallDirectory)) 'EmeraldVeil.exe'
 $expectedCommand = '"{0}"' -f $targetPath
 
@@ -31,6 +32,29 @@ function Get-RunValue {
     return $item.PSObject.Properties[$valueName].Value
 }
 
+function Get-LegacyRunValue {
+    if (-not (Test-Path -LiteralPath $runKeyPath)) {
+        return $null
+    }
+    $item = Get-ItemProperty -LiteralPath $runKeyPath -Name $legacyValueName -ErrorAction SilentlyContinue
+    if ($null -eq $item) {
+        return $null
+    }
+    return $item.PSObject.Properties[$legacyValueName].Value
+}
+
+function Remove-OwnedLegacyRunValue {
+    $legacy = Get-LegacyRunValue
+    if ($null -eq $legacy) {
+        return
+    }
+    if (-not [string]::Equals($legacy, $expectedCommand, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove foreign HKCU Run value '$legacyValueName': $legacy"
+    }
+    Remove-ItemProperty -LiteralPath $runKeyPath -Name $legacyValueName -ErrorAction Stop
+    Remove-ItemProperty -LiteralPath $approvedKeyPath -Name $legacyValueName -ErrorAction SilentlyContinue
+}
+
 function Get-OwnerPath {
     if (-not (Test-Path -LiteralPath $ownerKeyPath)) {
         return $null
@@ -42,6 +66,16 @@ function Get-OwnerPath {
     }
 
     return $item.PSObject.Properties['StartupExecutable'].Value
+}
+
+function Test-LegacyEmeraldVeilExecutable {
+    if (-not (Test-Path -LiteralPath $targetPath -PathType Leaf)) {
+        return $false
+    }
+
+    $version = (Get-Item -LiteralPath $targetPath).VersionInfo
+    return [string]::Equals($version.ProductName, 'EmeraldVeil', [System.StringComparison]::Ordinal) -and
+        $version.OriginalFilename -in @('EmeraldVeil.dll', 'EmeraldVeil.exe')
 }
 
 function Test-InstalledState {
@@ -125,7 +159,8 @@ switch ($Action) {
 
         $existingOwner = Get-OwnerPath
         if ((Test-Path -LiteralPath $targetPath -PathType Leaf) -and
-            -not [string]::Equals($existingOwner, $targetPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            -not [string]::Equals($existingOwner, $targetPath, [System.StringComparison]::OrdinalIgnoreCase) -and
+            -not (Test-LegacyEmeraldVeilExecutable)) {
             throw "Refusing to overwrite an executable without the Emerald Veil owner marker: $targetPath"
         }
 
@@ -153,6 +188,8 @@ switch ($Action) {
             if ($maintenance.ExitCode -ne 0) {
                 throw "Startup registration failed with exit code $($maintenance.ExitCode)."
             }
+
+            Remove-OwnedLegacyRunValue
 
             Test-InstalledState | Out-Null
             Start-Process -FilePath $targetPath
@@ -200,12 +237,18 @@ switch ($Action) {
             Remove-ItemProperty -LiteralPath $ownerKeyPath -Name 'StartupExecutable' -ErrorAction SilentlyContinue
         }
 
+        Remove-OwnedLegacyRunValue
+
         Stop-OwnedProcess
         Remove-OwnedFile -Path $targetPath
         Remove-OwnedFile -Path "$targetPath.previous"
 
         if ($null -ne (Get-RunValue)) {
             throw "HKCU Run value '$valueName' remained after removal."
+        }
+
+        if ($null -ne (Get-LegacyRunValue)) {
+            throw "Legacy HKCU Run value '$legacyValueName' remained after removal."
         }
 
         if ($null -ne (Get-OwnerPath)) {

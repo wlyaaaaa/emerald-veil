@@ -5,7 +5,7 @@ namespace EmeraldVeil.App;
 
 internal sealed class StartAtLoginService
 {
-    internal const string StartupValueName = "Emerald Veil";
+    internal const string StartupValueName = "Emerald Veil Native Bubbles";
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string StartupApprovedKeyPath =
         @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";

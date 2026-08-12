@@ -2,7 +2,7 @@
 
 Emerald Veil is now a small, reversible Windows-native Bubbles profile for OLED idle use. It selects the copy of `Bubbles.scr` already supplied by Windows, starts it after five minutes of user inactivity, enlarges the bubbles, and exits on normal input.
 
-Windows owns the idle trigger, so there is no background Emerald Veil process, `Run` entry, scheduled task, or console window at sign-in. The setting persists across reboot and becomes active for the user session after login.
+The installed WinExe stays as a quiet user-session watchdog because Chromium/WebView2 foreground apps can prevent Windows from delivering the normal screen-saver command. It uses `GetLastInputInfo` and starts the exact Windows saver path directly; it has no console, capture, network, telemetry, scheduled task, or shell wrapper. The owned `Emerald Veil Native Bubbles` Run value persists across reboot.
 
 ## Important behavior
 
@@ -20,6 +20,9 @@ The private `Radius` setting is not a documented Windows API. This project there
 PowerShell 7 on Windows 11 is the tested target. Administrator rights are not required.
 
 ```powershell
+# Install the no-console idle watchdog and its direct user-level startup entry.
+pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Install
+
 # Configure native Bubbles and enable the five-minute idle trigger.
 pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Enable
 
@@ -29,15 +32,18 @@ pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Verify
 # Immediately disable automatic screen-saver activation while keeping the profile ready.
 pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Disable
 
+# Fully remove the watchdog/startup entry when the product is no longer wanted.
+pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Remove
+
 # Restore the exact state captured before the first Enable operation.
 pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Restore
 ```
 
-`Disable` is deliberately independent of bubble-size or other profile drift: it only needs to prove that Windows automatic screen-saver activation is off. A later `Enable` turns the same five-minute profile back on.
+`Disable` stops an owned running `Bubbles.scr` process and proves that automatic activation is off, without depending on unrelated profile drift. The watchdog remains installed but will not launch the saver while `ScreenSaveActive=0`; `Install-EmeraldVeil.ps1 -Action Remove` is the fast complete-off path and removes its startup entry and installed executable. A later `Enable` turns the same five-minute profile back on.
 
 The first `Enable` stores the rollback record at `%LOCALAPPDATA%\EmeraldVeil\native-bubbles-preimage.json`. It is preserved across repeated enables and must not be published because it is machine-specific. `Restore` may also restore a legacy Emerald Veil startup entry if that entry existed in the captured state; use `Disable` for the normal “turn it off” operation.
 
-See [the product design](docs/product-design.md) for the exact Windows settings and rollback contract. The older custom WPF/D3D experiment remains legacy source only and is not installed or started by this profile.
+See [the product design](docs/product-design.md) for the exact Windows settings and rollback contract. The older custom WPF/D3D experiment remains legacy source only and is not shown by this profile; the WPF process is only the no-console idle watchdog/tray host.
 
 ## License
 

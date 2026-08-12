@@ -21,6 +21,7 @@ $runPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $approvedPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
 $ownerPath = 'HKCU:\Software\EmeraldVeil'
 $legacyValueName = 'Emerald Veil'
+$watchdogValueName = 'Emerald Veil Native Bubbles'
 $legacyOwnerName = 'StartupExecutable'
 $bubblesExecutable = Join-Path $env:WINDIR 'System32\Bubbles.scr'
 $expectedLegacyCommand = '"{0}"' -f ([IO.Path]::GetFullPath($LegacyExecutable))
@@ -370,6 +371,20 @@ function Get-LegacyRunValue {
     return $item.PSObject.Properties[$legacyValueName].Value
 }
 
+function Get-WatchdogRunValue {
+    if (-not (Test-Path -LiteralPath $runPath)) {
+        return $null
+    }
+    $item = Get-ItemProperty `
+        -LiteralPath $runPath `
+        -Name $watchdogValueName `
+        -ErrorAction SilentlyContinue
+    if ($null -eq $item) {
+        return $null
+    }
+    return $item.PSObject.Properties[$watchdogValueName].Value
+}
+
 function Disable-LegacyStartup {
     $runValue = Get-LegacyRunValue
     if ($null -eq $runValue) {
@@ -381,22 +396,57 @@ function Disable-LegacyStartup {
             [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to remove a foreign '$legacyValueName' Run value: $runValue"
     }
-    if (-not (Test-Path -LiteralPath $LegacyExecutable -PathType Leaf)) {
-        throw "Legacy startup executable is missing: $LegacyExecutable"
-    }
+    Remove-ItemProperty -LiteralPath $runPath -Name $legacyValueName -ErrorAction Stop
+    Remove-ItemProperty -LiteralPath $approvedPath -Name $legacyValueName -ErrorAction SilentlyContinue
 
-    $process = Start-Process `
-        -FilePath $LegacyExecutable `
-        -ArgumentList '--remove-startup' `
-        -WindowStyle Hidden `
-        -Wait `
-        -PassThru
-    if ($process.ExitCode -ne 0) {
-        throw "Legacy startup removal failed with exit code $($process.ExitCode)."
+    # The owner marker is shared by the old and new executable. Preserve it
+    # when the new watchdog Run value is already present.
+    if ($null -eq (Get-WatchdogRunValue)) {
+        $owner = Get-RegistryValueSnapshot -Path $ownerPath -Name $legacyOwnerName
+        if ($owner.exists -and
+            [string]::Equals(
+                [string]$owner.value,
+                [IO.Path]::GetFullPath($LegacyExecutable),
+                [StringComparison]::OrdinalIgnoreCase)) {
+            Remove-ItemProperty -LiteralPath $ownerPath -Name $legacyOwnerName -ErrorAction SilentlyContinue
+        }
     }
     if ($null -ne (Get-LegacyRunValue)) {
         throw "The '$legacyValueName' Run value remained after removal."
     }
+}
+
+function Get-OwnedNativeBubblesProcess {
+    @(Get-Process -Name 'Bubbles.scr','Bubbles' -ErrorAction SilentlyContinue | Where-Object {
+        try {
+            [string]::Equals(
+                [IO.Path]::GetFullPath($_.Path),
+                [IO.Path]::GetFullPath($bubblesExecutable),
+                [StringComparison]::OrdinalIgnoreCase)
+        }
+        catch {
+            $false
+        }
+    })
+}
+
+function Stop-NativeBubblesProcess {
+    $owned = @(Get-OwnedNativeBubblesProcess)
+    foreach ($process in $owned) {
+        $process | Stop-Process -Force
+        $process | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
+    }
+
+    # Process termination is asynchronous. Poll the exact path briefly so a
+    # stale process object cannot make the emergency Disable path roll back.
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        if (@(Get-OwnedNativeBubblesProcess).Count -eq 0) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    }
+
+    throw "Native Bubbles is still running: $bubblesExecutable"
 }
 
 function Set-NativeRegistryConfiguration {
@@ -489,7 +539,7 @@ function Get-NativeBubblesStatus {
     }
     $legacyApproval = Get-RegistryValueSnapshot -Path $approvedPath -Name $legacyValueName
     $legacyOwner = Get-RegistryValueSnapshot -Path $ownerPath -Name $legacyOwnerName
-    if ($legacyApproval.exists -or $legacyOwner.exists) {
+    if ($legacyApproval.exists -or ($legacyOwner.exists -and $null -eq (Get-WatchdogRunValue))) {
         $problems.Add('Legacy Emerald Veil startup metadata is still present.')
     }
     if ($problems.Count -gt 0) {
@@ -557,6 +607,7 @@ switch ($Action) {
             if (-not (Test-Path -LiteralPath $desktopPath)) {
                 throw 'The desktop configuration key is missing.'
             }
+            Stop-NativeBubblesProcess
             New-ItemProperty -LiteralPath $desktopPath -Name 'ScreenSaveActive' `
                 -PropertyType String -Value '0' -Force | Out-Null
             [EmeraldVeil.NativeScreenSaver]::SetState(

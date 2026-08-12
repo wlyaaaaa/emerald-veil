@@ -145,7 +145,7 @@ internal sealed class VeilController : IAsyncDisposable
                 }
                 else
                 {
-                    _window.ShowVeil();
+                    _window.ShowVeil(force: mode == VeilMode.Preview);
                 }
             },
             DispatcherPriority.Send);

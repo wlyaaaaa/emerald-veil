@@ -9,6 +9,7 @@ namespace EmeraldVeil.App;
 internal sealed class VeilWindow : Window, IDisposable
 {
     private readonly VeilSurface _surface = new();
+    private readonly NativeBubblesLauncher _nativeBubbles = new();
     private readonly nint _windowHandle;
     private readonly HwndSource _windowSource;
     private bool _allowClose;
@@ -41,30 +42,35 @@ internal sealed class VeilWindow : Window, IDisposable
 
     internal bool IsVeilVisible => IsVisible && Opacity > 0;
 
-    internal void ShowVeil()
+    internal void ShowVeil(bool force = false)
     {
         ThrowIfDisposed();
 
-        if (!IsVisible)
-        {
-            Show();
-        }
-
-        PositionOnTargetDisplay();
-        Opacity = 1;
-        _surface.StartAnimation();
-    }
-
-    internal void HideVeil()
-    {
-        if (_disposed || !IsVisible)
+        // Preview is explicit. Automatic activation also has a separate
+        // watchdog, but this guard makes Disable effective immediately even
+        // if one final controller tick is already queued on the dispatcher.
+        if (!force && !NativeMethods.GetScreenSaverActive())
         {
             return;
         }
 
-        Opacity = 0;
-        _surface.StopAnimation();
-        Hide();
+        _nativeBubbles.Start();
+    }
+
+    internal void HideVeil()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _nativeBubbles.Stop();
+        if (IsVisible)
+        {
+            Opacity = 0;
+            _surface.StopAnimation();
+            Hide();
+        }
     }
 
     internal NativeMethods.Rect ReadPhysicalBounds()
@@ -81,6 +87,7 @@ internal sealed class VeilWindow : Window, IDisposable
         }
 
         _disposed = true;
+        _nativeBubbles.Dispose();
         _surface.StopAnimation();
         _windowSource.RemoveHook(WindowMessageHook);
         _allowClose = true;

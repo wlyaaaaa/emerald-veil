@@ -4,6 +4,7 @@ namespace EmeraldVeil.App;
 
 internal static class NativeMethods
 {
+    internal const uint SpiGetScreenSaveActive = 0x0010;
     internal const int GwlExStyle = -20;
     internal const long WsExTransparent = 0x0000_0020L;
     internal const long WsExToolWindow = 0x0000_0080L;
@@ -41,6 +42,14 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetLastInputInfo(ref LastInputInfo lastInputInfo);
+
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SystemParametersInfoGet(
+        uint action,
+        uint parameter,
+        ref uint value,
+        uint flags);
 
     [DllImport("kernel32.dll")]
     internal static extern uint GetTickCount();
@@ -83,6 +92,17 @@ internal static class NativeMethods
         nint.Size == 8
             ? GetWindowLongPtr64(windowHandle, index)
             : new nint(GetWindowLong32(windowHandle, index));
+
+    internal static bool GetScreenSaverActive()
+    {
+        uint value = 0;
+        if (!SystemParametersInfoGet(SpiGetScreenSaveActive, 0, ref value, 0))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        return value != 0;
+    }
 
     internal static void SetWindowLongPtr(nint windowHandle, int index, nint value)
     {
