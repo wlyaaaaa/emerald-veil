@@ -34,7 +34,7 @@ Per-Monitor V2 awareness is declared before any HWND is created. `Screen.Primary
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Screensavers\Bubbles` | `Radius` | `REG_DWORD` | `1130000000` (`0x435A6E80`) |
 | `HKCU\Software\EmeraldVeil` | `NativeBubblesEnabled` | `REG_DWORD` | `1` enabled, `0` disabled |
 
-Runtime setters use active=false, timeout=300, and secure=false. This prevents Windows from independently launching a second screen saver at the same threshold. The only helper is the direct WinExe `HKCU\...\Run` value; there is no service, SYSTEM process, scheduled task, console, shell interpreter, capture API, network listener, or telemetry.
+Runtime setters use active=false, timeout=300, and secure=false. Windows can reconstruct active=true during sign-in even while the registry remains `ScreenSaveActive=0`, so the enabled watchdog reasserts runtime active=false on every login start before monitoring idle time. This prevents Windows from independently launching a second screen saver at the same threshold. The only helper is the direct WinExe `HKCU\...\Run` value; there is no service, SYSTEM process, scheduled task, console, shell interpreter, capture API, network listener, or telemetry.
 
 ## Remote and input boundary
 

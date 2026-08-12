@@ -26,6 +26,15 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        // Windows can reconstruct the runtime screen-saver flag as enabled at
+        // sign-in even while ScreenSaveActive remains "0" in HKCU. The native
+        // overlay owns idle activation, so restore the runtime half of that
+        // contract before starting the watchdog.
+        if (NativeBubblesSettings.IsEnabled())
+        {
+            NativeMethods.SetScreenSaverActive(active: false);
+        }
+
         _singleton = new Mutex(initiallyOwned: true, SingletonName, out var isFirstInstance);
         if (!isFirstInstance)
         {
