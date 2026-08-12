@@ -559,7 +559,7 @@ function Get-NativeBubblesStatus {
     if (-not $watchdogEntry.exists -or
         $watchdogEntry.kind -ne 'DWord' -or
         [uint32]$watchdogEntry.value -ne [uint32]1) {
-        $problems.Add('The Emerald Veil preview-mode watchdog is not enabled.')
+        $problems.Add('The Emerald Veil native-overlay watchdog is not enabled.')
     }
     $watchdogRun = Get-WatchdogRunValue
     if (-not [string]::Equals(
@@ -583,7 +583,7 @@ function Get-NativeBubblesStatus {
     [pscustomobject]@{
         status = 'enabled'
         screen_saver = $bubblesExecutable
-        render_mode = 'preview_host'
+        render_mode = 'native_full_size_overlay'
         windows_fullscreen_trigger = $false
         timeout_seconds = [int]$timeoutRuntime
         secure = $secureRuntime

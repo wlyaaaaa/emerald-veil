@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace EmeraldVeil.App;
 
@@ -8,6 +9,7 @@ internal static class NativeMethods
     internal const int GwlExStyle = -20;
     internal const long WsExTransparent = 0x0000_0020L;
     internal const long WsExToolWindow = 0x0000_0080L;
+    internal const long WsExTopmost = 0x0000_0008L;
     internal const long WsExLayered = 0x0008_0000L;
     internal const long WsExNoActivate = 0x0800_0000L;
 
@@ -20,6 +22,10 @@ internal static class NativeMethods
 
     internal const uint SwpNoActivate = 0x0010;
     internal const uint SwpShowWindow = 0x0040;
+    internal const uint LwaColorKey = 0x0000_0001;
+    internal const int SwHide = 0;
+    internal const uint JobObjectLimitKillOnJobClose = 0x0000_2000;
+    internal const int JobObjectExtendedLimitInformationClass = 9;
 
     internal static readonly nint HwndTopmost = new(-1);
 
@@ -38,6 +44,44 @@ internal static class NativeMethods
         internal int Right;
         internal int Bottom;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JobObjectBasicLimitInformation
+    {
+        internal long PerProcessUserTimeLimit;
+        internal long PerJobUserTimeLimit;
+        internal uint LimitFlags;
+        internal nuint MinimumWorkingSetSize;
+        internal nuint MaximumWorkingSetSize;
+        internal uint ActiveProcessLimit;
+        internal nuint Affinity;
+        internal uint PriorityClass;
+        internal uint SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct IoCounters
+    {
+        internal ulong ReadOperationCount;
+        internal ulong WriteOperationCount;
+        internal ulong OtherOperationCount;
+        internal ulong ReadTransferCount;
+        internal ulong WriteTransferCount;
+        internal ulong OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JobObjectExtendedLimitInformation
+    {
+        internal JobObjectBasicLimitInformation BasicLimitInformation;
+        internal IoCounters IoInfo;
+        internal nuint ProcessMemoryLimit;
+        internal nuint JobMemoryLimit;
+        internal nuint PeakProcessMemoryUsed;
+        internal nuint PeakJobMemoryUsed;
+    }
+
+    internal delegate bool EnumWindowsProc(nint windowHandle, nint parameter);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -86,7 +130,51 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool EnumWindows(EnumWindowsProc callback, nint parameter);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern uint GetWindowThreadProcessId(
+        nint windowHandle,
+        out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindowVisible(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ShowWindow(nint windowHandle, int command);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetLayeredWindowAttributes(
+        nint windowHandle,
+        uint colorKey,
+        byte alpha,
+        uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool DestroyIcon(nint iconHandle);
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true)]
+    internal static extern SafeFileHandle CreateJobObject(
+        nint securityAttributes,
+        string? name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetInformationJobObject(
+        SafeFileHandle jobHandle,
+        int informationClass,
+        ref JobObjectExtendedLimitInformation information,
+        uint informationLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool AssignProcessToJobObject(
+        SafeFileHandle jobHandle,
+        nint processHandle);
 
     internal static nint GetWindowLongPtr(nint windowHandle, int index) =>
         nint.Size == 8

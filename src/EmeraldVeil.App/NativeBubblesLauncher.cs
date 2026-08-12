@@ -1,40 +1,64 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using Forms = System.Windows.Forms;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace EmeraldVeil.App;
 
 /// <summary>
-/// Hosts the Windows-provided Bubbles renderer in preview mode. Preview mode
-/// is a normal desktop window, not a Windows screen-saver session, so remote
-/// desktop/capture products keep their normal session and display pipeline.
+/// Starts the Windows-provided full-size Bubbles renderer inside the current
+/// interactive desktop, then turns its top-level window into a transparent,
+/// click-through overlay. Windows' own screen-saver trigger remains disabled.
 /// </summary>
 internal sealed class NativeBubblesLauncher : IDisposable
 {
+    private static readonly TimeSpan InitializationTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan InitializationPollInterval = TimeSpan.FromMilliseconds(5);
+    private static readonly TimeSpan MaintenancePollInterval = TimeSpan.FromMilliseconds(250);
+    private const long RequiredExtendedStyles =
+        NativeMethods.WsExTransparent |
+        NativeMethods.WsExToolWindow |
+        NativeMethods.WsExLayered |
+        NativeMethods.WsExNoActivate;
+
     private readonly string _screenSaverPath = Path.Combine(
         Environment.SystemDirectory,
         "Bubbles.scr");
+    private readonly object _stateLock = new();
 
-    private BubblesPreviewHost? _host;
     private Process? _process;
+    private SafeFileHandle? _jobHandle;
+    private CancellationTokenSource? _maintenanceCancellation;
+    private Task? _maintenanceTask;
+    private Rectangle _physicalBounds;
+    private nint _windowHandle;
     private bool _disposed;
 
-    internal bool IsRunning =>
-        _host is not null &&
-        _process is not null &&
-        !_process.HasExited;
+    internal bool IsRunning
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _process is not null && !HasExited(_process);
+            }
+        }
+    }
 
     internal bool TryGetBounds(out Rectangle bounds)
     {
-        if (_host is null || _host.IsDisposed)
+        lock (_stateLock)
         {
-            bounds = Rectangle.Empty;
-            return false;
-        }
+            if (_process is null || HasExited(_process))
+            {
+                bounds = Rectangle.Empty;
+                return false;
+            }
 
-        bounds = _host.Bounds;
-        return true;
+            bounds = _physicalBounds;
+            return true;
+        }
     }
 
     internal bool Start(Rectangle physicalBounds)
@@ -55,28 +79,54 @@ internal sealed class NativeBubblesLauncher : IDisposable
 
         Stop();
 
-        var host = new BubblesPreviewHost(physicalBounds);
+        Process? process = null;
+        SafeFileHandle? jobHandle = null;
+        CancellationTokenSource? cancellation = null;
         try
         {
-            host.Show();
-            var process = Process.Start(new ProcessStartInfo
+            process = Process.Start(new ProcessStartInfo
             {
                 FileName = _screenSaverPath,
-                Arguments = $"/p {host.Handle.ToInt64()}",
+                Arguments = "/s",
                 WorkingDirectory = Path.GetDirectoryName(_screenSaverPath)!,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
             }) ?? throw new InvalidOperationException("Windows Bubbles did not start.");
+            jobHandle = CreateKillOnCloseJob(process);
 
-            _host = host;
-            _process = process;
+            cancellation = new CancellationTokenSource();
+            lock (_stateLock)
+            {
+                if (_disposed)
+                {
+                    throw new ObjectDisposedException(nameof(NativeBubblesLauncher));
+                }
+
+                _process = process;
+                _jobHandle = jobHandle;
+                _physicalBounds = physicalBounds;
+                _windowHandle = nint.Zero;
+                _maintenanceCancellation = cancellation;
+                _maintenanceTask = Task.Run(
+                    () => MaintainOverlayWindow(process, physicalBounds, cancellation.Token),
+                    CancellationToken.None);
+                _ = _maintenanceTask.ContinueWith(
+                    _ => FinishSession(process, jobHandle, cancellation),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
+
             return true;
         }
         catch
         {
-            host.Close();
-            host.Dispose();
+            cancellation?.Cancel();
+            jobHandle?.Dispose();
+            TerminateProcess(process);
+            cancellation?.Dispose();
+            process?.Dispose();
             throw;
         }
     }
@@ -90,38 +140,48 @@ internal sealed class NativeBubblesLauncher : IDisposable
 
     internal void Stop()
     {
-        var process = _process;
-        _process = null;
-        if (process is not null)
+        Process? process;
+        SafeFileHandle? jobHandle;
+        CancellationTokenSource? cancellation;
+        nint windowHandle;
+        lock (_stateLock)
         {
-            using (process)
+            process = _process;
+            jobHandle = _jobHandle;
+            cancellation = _maintenanceCancellation;
+            windowHandle = _windowHandle;
+            _process = null;
+            _jobHandle = null;
+            _maintenanceCancellation = null;
+            _maintenanceTask = null;
+            _physicalBounds = Rectangle.Empty;
+            _windowHandle = nint.Zero;
+        }
+
+        // Hiding the owned native window is synchronous and is intentionally
+        // first: input must remove visible pixels without waiting for process
+        // teardown or a render-thread/driver response.
+        if (windowHandle != nint.Zero)
+        {
+            _ = NativeMethods.ShowWindow(windowHandle, NativeMethods.SwHide);
+        }
+
+        if (cancellation is not null)
+        {
+            try
             {
-                try
-                {
-                    if (!process.HasExited)
-                    {
-                        process.Kill(entireProcessTree: false);
-                        process.WaitForExit(1000);
-                    }
-                }
-                catch (InvalidOperationException)
-                {
-                    // The preview renderer exited between checks.
-                }
-                catch (System.ComponentModel.Win32Exception)
-                {
-                    // A process that is no longer accessible is not retried.
-                }
+                cancellation.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
             }
         }
 
-        var host = _host;
-        _host = null;
-        if (host is not null)
-        {
-            host.Close();
-            host.Dispose();
-        }
+        // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE also covers an unexpected child
+        // process or a launcher bookkeeping failure. Explicit termination is
+        // retained as a best-effort fallback for the exact process handle.
+        jobHandle?.Dispose();
+        TerminateProcess(process);
     }
 
     public void Dispose()
@@ -137,51 +197,287 @@ internal sealed class NativeBubblesLauncher : IDisposable
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
-    private sealed class BubblesPreviewHost : Forms.Form
+    private void MaintainOverlayWindow(
+        Process process,
+        Rectangle physicalBounds,
+        CancellationToken cancellationToken)
     {
-        internal BubblesPreviewHost(Rectangle physicalBounds)
+        var initialization = Stopwatch.StartNew();
+        bool initialized = false;
+        try
         {
-            Text = "Emerald Veil Native Bubbles Host";
-            AutoScaleMode = Forms.AutoScaleMode.None;
-            FormBorderStyle = Forms.FormBorderStyle.None;
-            StartPosition = Forms.FormStartPosition.Manual;
-            ShowInTaskbar = false;
-            TopMost = true;
-            Bounds = physicalBounds;
-            BackColor = Color.Black;
-            TransparencyKey = Color.Black;
-        }
-
-        protected override bool ShowWithoutActivation => true;
-
-        protected override Forms.CreateParams CreateParams
-        {
-            get
+            while (!cancellationToken.IsCancellationRequested && !HasExited(process))
             {
-                var parameters = base.CreateParams;
-                parameters.ExStyle |= checked((int)(
-                    NativeMethods.WsExTransparent |
-                    NativeMethods.WsExToolWindow |
-                    NativeMethods.WsExLayered |
-                    NativeMethods.WsExNoActivate));
-                return parameters;
+                if (initialized)
+                {
+                    Task.Delay(MaintenancePollInterval, cancellationToken)
+                        .GetAwaiter()
+                        .GetResult();
+                    continue;
+                }
+
+                var candidates = EnumerateWindows(process.Id);
+                var selected = SelectTargetWindow(candidates, physicalBounds);
+                if (selected is not null)
+                {
+                    HideOtherVisibleWindows(candidates, selected.Value.Handle);
+                    if (!ApplyOverlayContract(selected.Value.Handle, physicalBounds))
+                    {
+                        throw new InvalidOperationException(
+                            "The native Bubbles window could not satisfy the overlay contract.");
+                    }
+
+                    initialized = true;
+                    lock (_stateLock)
+                    {
+                        if (ReferenceEquals(_process, process))
+                        {
+                            _windowHandle = selected.Value.Handle;
+                        }
+                    }
+                }
+
+                if (!initialized && initialization.Elapsed >= InitializationTimeout)
+                {
+                    throw new TimeoutException(
+                        "Windows Bubbles did not expose a usable overlay window within two seconds.");
+                }
+
+                Task.Delay(InitializationPollInterval, cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
             }
         }
-
-        protected override void WndProc(ref Forms.Message message)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            switch (message.Msg)
-            {
-                case NativeMethods.WmNchittest:
-                    message.Result = new nint(NativeMethods.HtTransparent);
-                    return;
-
-                case NativeMethods.WmMouseActivate:
-                    message.Result = new nint(NativeMethods.MaNoActivate);
-                    return;
-            }
-
-            base.WndProc(ref message);
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Native Bubbles overlay stopped: {exception}");
+            TerminateProcess(process);
         }
     }
+
+    private void FinishSession(
+        Process process,
+        SafeFileHandle jobHandle,
+        CancellationTokenSource cancellation)
+    {
+        lock (_stateLock)
+        {
+            if (ReferenceEquals(_process, process))
+            {
+                _process = null;
+                _jobHandle = null;
+                _maintenanceCancellation = null;
+                _maintenanceTask = null;
+                _physicalBounds = Rectangle.Empty;
+                _windowHandle = nint.Zero;
+            }
+        }
+
+        jobHandle.Dispose();
+        cancellation.Dispose();
+        process.Dispose();
+    }
+
+    private static SafeFileHandle CreateKillOnCloseJob(Process process)
+    {
+        var jobHandle = NativeMethods.CreateJobObject(nint.Zero, name: null);
+        if (jobHandle.IsInvalid)
+        {
+            throw new System.ComponentModel.Win32Exception(
+                Marshal.GetLastPInvokeError(),
+                "Unable to create the native Bubbles lifetime job.");
+        }
+
+        try
+        {
+            var information = new NativeMethods.JobObjectExtendedLimitInformation
+            {
+                BasicLimitInformation =
+                {
+                    LimitFlags = NativeMethods.JobObjectLimitKillOnJobClose,
+                },
+            };
+            if (!NativeMethods.SetInformationJobObject(
+                    jobHandle,
+                    NativeMethods.JobObjectExtendedLimitInformationClass,
+                    ref information,
+                    (uint)Marshal.SizeOf<NativeMethods.JobObjectExtendedLimitInformation>()))
+            {
+                throw new System.ComponentModel.Win32Exception(
+                    Marshal.GetLastPInvokeError(),
+                    "Unable to configure the native Bubbles lifetime job.");
+            }
+
+            if (!NativeMethods.AssignProcessToJobObject(jobHandle, process.Handle))
+            {
+                throw new System.ComponentModel.Win32Exception(
+                    Marshal.GetLastPInvokeError(),
+                    "Unable to assign Windows Bubbles to its lifetime job.");
+            }
+
+            return jobHandle;
+        }
+        catch
+        {
+            jobHandle.Dispose();
+            throw;
+        }
+    }
+
+    private static IReadOnlyList<WindowCandidate> EnumerateWindows(int processId)
+    {
+        var candidates = new List<WindowCandidate>();
+        _ = NativeMethods.EnumWindows((windowHandle, unused) =>
+        {
+            _ = NativeMethods.GetWindowThreadProcessId(windowHandle, out uint ownerProcessId);
+            if (ownerProcessId != processId ||
+                !NativeMethods.GetWindowRect(windowHandle, out var rectangle))
+            {
+                return true;
+            }
+
+            var bounds = Rectangle.FromLTRB(
+                rectangle.Left,
+                rectangle.Top,
+                rectangle.Right,
+                rectangle.Bottom);
+            candidates.Add(new WindowCandidate(
+                windowHandle,
+                bounds,
+                NativeMethods.IsWindowVisible(windowHandle)));
+            return true;
+        }, nint.Zero);
+        return candidates;
+    }
+
+    private static WindowCandidate? SelectTargetWindow(
+        IReadOnlyList<WindowCandidate> candidates,
+        Rectangle physicalBounds)
+    {
+        return candidates
+            .Where(candidate => candidate.Bounds.Width > 0 && candidate.Bounds.Height > 0)
+            .Select(candidate => new
+            {
+                Candidate = candidate,
+                IntersectionArea = GetIntersectionArea(candidate.Bounds, physicalBounds),
+            })
+            .Where(candidate => candidate.IntersectionArea > 0)
+            .OrderByDescending(candidate => candidate.IntersectionArea)
+            .ThenByDescending(candidate =>
+                candidate.Candidate.Bounds.Width * (long)candidate.Candidate.Bounds.Height)
+            .Select(candidate => (WindowCandidate?)candidate.Candidate)
+            .FirstOrDefault();
+    }
+
+    private static void HideOtherVisibleWindows(
+        IReadOnlyList<WindowCandidate> candidates,
+        nint selectedHandle)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Handle != selectedHandle && candidate.Visible)
+            {
+                _ = NativeMethods.ShowWindow(candidate.Handle, NativeMethods.SwHide);
+            }
+        }
+    }
+
+    private static bool ApplyOverlayContract(nint windowHandle, Rectangle physicalBounds)
+    {
+        long existingStyles = NativeMethods
+            .GetWindowLongPtr(windowHandle, NativeMethods.GwlExStyle)
+            .ToInt64();
+        long updatedStyles = existingStyles | RequiredExtendedStyles;
+        if (updatedStyles != existingStyles)
+        {
+            NativeMethods.SetWindowLongPtr(
+                windowHandle,
+                NativeMethods.GwlExStyle,
+                new nint(updatedStyles));
+        }
+
+        if (!NativeMethods.SetLayeredWindowAttributes(
+                windowHandle,
+                colorKey: 0,
+                alpha: byte.MaxValue,
+                NativeMethods.LwaColorKey))
+        {
+            return false;
+        }
+
+        if (!NativeMethods.SetWindowPos(
+                windowHandle,
+                NativeMethods.HwndTopmost,
+                physicalBounds.Left,
+                physicalBounds.Top,
+                physicalBounds.Width,
+                physicalBounds.Height,
+                NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow))
+        {
+            return false;
+        }
+
+        long readBackStyles = NativeMethods
+            .GetWindowLongPtr(windowHandle, NativeMethods.GwlExStyle)
+            .ToInt64();
+        if ((readBackStyles & RequiredExtendedStyles) != RequiredExtendedStyles ||
+            (readBackStyles & NativeMethods.WsExTopmost) == 0 ||
+            !NativeMethods.GetWindowRect(windowHandle, out var readBackBounds))
+        {
+            return false;
+        }
+
+        return readBackBounds.Left == physicalBounds.Left &&
+            readBackBounds.Top == physicalBounds.Top &&
+            readBackBounds.Right == physicalBounds.Right &&
+            readBackBounds.Bottom == physicalBounds.Bottom;
+    }
+
+    private static long GetIntersectionArea(Rectangle first, Rectangle second)
+    {
+        var intersection = Rectangle.Intersect(first, second);
+        return intersection.Width * (long)intersection.Height;
+    }
+
+    private static bool HasExited(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+    }
+
+    private static void TerminateProcess(Process? process)
+    {
+        if (process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: false);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+    }
+
+    private readonly record struct WindowCandidate(
+        nint Handle,
+        Rectangle Bounds,
+        bool Visible);
 }

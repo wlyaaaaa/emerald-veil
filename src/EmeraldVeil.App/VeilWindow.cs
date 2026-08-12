@@ -46,14 +46,15 @@ internal sealed class VeilWindow : Window, IDisposable
     {
         ThrowIfDisposed();
 
-        // Preview is explicit. Automatic activation uses the project-owned
-        // setting because Windows' own full-screen saver trigger stays off.
+        // Tray preview is explicit. Automatic activation uses the project-owned
+        // setting because Windows' own screen-saver trigger stays off.
         if (!force && !NativeBubblesSettings.IsEnabled())
         {
             return;
         }
 
-        _nativeBubbles.Start(GetTargetBounds());
+        var targetBounds = GetTargetBounds();
+        _nativeBubbles.Start(targetBounds);
     }
 
     internal void HideVeil()

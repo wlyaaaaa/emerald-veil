@@ -1,53 +1,54 @@
 # Emerald Veil
 
-Emerald Veil is a small, reversible Windows-native Bubbles overlay for OLED idle use. It hosts the copy of `Bubbles.scr` already supplied by Windows after five minutes of user inactivity, enlarges the bubbles, and disappears on normal input.
+Emerald Veil is a small, reversible Windows-native Bubbles overlay for OLED idle use. After five minutes without keyboard or mouse input, it shows the copy of `Bubbles.scr` already supplied by Windows. The original Microsoft colors, glass material, size, count policy, and motion stay intact while the live desktop remains visible underneath.
 
-The installed WinExe stays as a quiet user-session watchdog. It uses `GetLastInputInfo`, creates a transparent click-through desktop host, and runs the exact Windows saver in its documented `/p <HWND>` preview mode. Windows' own full-screen screen-saver trigger remains disabled, so the live desktop stays visible and remote-control or streaming software keeps a normal interactive session; ToDesk, Sunshine, and UU/GameViewer are examples, not an allowlist. There is no console, capture, network, telemetry, scheduled task, shell wrapper, checkerboard, or replacement background.
+The installed WinExe is a quiet user-session watchdog. It samples `GetLastInputInfo`, manually starts `Bubbles.scr /s`, finds the exact child process window, turns black background pixels transparent, and makes that window topmost, non-activating, and click-through. Windows' own automatic screen-saver and lock trigger remains disabled. No screenshot, checkerboard, replacement background, custom bubble renderer, network, telemetry, scheduled task, PowerShell wrapper, or product-name allowlist is used.
 
-Startup is deliberately per-user at interactive logon through `HKCU\...\Run`. The visual process must not run as `SYSTEM`: Session 0 cannot display on the signed-in user's desktop, and a SYSTEM service would add session-switching and remote-access failure modes without improving the idle trigger.
+Startup is deliberately per-user through a direct `HKCU\...\Run` WinExe entry. It must not run as `SYSTEM`: Session 0 cannot draw on the signed-in user's desktop. Every renderer is assigned to a kill-on-close Windows Job Object, so input, Disable, watchdog exit, crash, or restart cannot leave an old Bubbles instance to overlap the next one.
 
-## Important behavior
+## Behavior
 
 - Idle timeout: 300 seconds.
-- Visual: Microsoft Windows native multicolor glass bubbles with an enlarged radius.
-- Exit: normal keyboard or mouse input removes the overlay within the watchdog polling interval.
-- Windows screen-saver/lock state: never entered; only preview rendering is used.
-- Foreground: Codex and other applications remain live and visible beneath the transparent bubbles.
-- Remote access: no product-specific allowlist is used; avoiding the Windows full-screen saver state is the compatibility boundary.
-- OLED protection: moving bubbles replace a fully static foreground while idle, but this is not a burn-in guarantee and does not replace sensible brightness, pixel shifting, or panel maintenance.
+- Visual: Microsoft Windows native multicolor glass bubbles in full-size `/s` mode.
+- Size: the native maximum-radius profile; it is not calculated from DPI, Windows scaling, screen inches, or resolution.
+- 4K density: Windows' native default produces roughly 26 large bubbles on a 3840×2160 target instead of thousands of preview-mode miniatures.
+- Exit: the owned window is hidden synchronously on normal input, then its Job Object is closed.
+- Foreground: Codex and other applications remain live and visible under the color-keyed window.
+- Remote use: the overlay stays on the current interactive desktop and does not enter secure desktop or lock state. ToDesk, Sunshine, UU/GameViewer, and similar tools are examples only; the program never detects or branches on their names.
+- OLED protection: motion reduces fully static exposure while idle, but no software screen saver guarantees prevention of burn-in.
 
-The private `Radius` setting is not a documented Windows API. This project therefore records an exact preimage before changing it and provides a full restore operation.
+The private `Radius` setting is not a documented Windows API. Emerald Veil records an exact preimage before changing it and provides a full restore operation. The Windows renderer still owns its native edge and collision behavior; the project deliberately does not patch process memory or redraw Microsoft visuals.
 
 ## Use
 
 PowerShell 7 on Windows 11 is the tested target. Administrator rights are not required.
 
 ```powershell
-# Install the no-console idle watchdog and its direct user-level startup entry.
+# Install/update the silent watchdog and direct per-user startup entry.
 pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Install
 
-# Configure native Bubbles and enable the five-minute idle trigger.
+# Enable the five-minute native overlay.
 pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Enable
 
-# Confirm preview-host mode, timeout, value types, radius, startup, and Windows runtime state.
+# Verify registry types, radius, timeout, startup, and disabled Windows trigger.
 pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Verify
 
-# Immediately disable automatic screen-saver activation while keeping the profile ready.
+# Immediately stop Bubbles and disable future idle activation.
 pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Disable
 
-# Fully remove the watchdog/startup entry when the product is no longer wanted.
+# Remove the watchdog, startup entry, and installed executable completely.
 pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Remove
 
-# Restore the exact state captured before the first Enable operation.
+# Restore the exact machine state captured before the first Enable.
 pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Restore
 ```
 
-`Disable` stops an owned running `Bubbles.scr` preview and clears the project-owned enabled flag. Windows' full-screen saver trigger remains off in both enabled and disabled states. `Install-EmeraldVeil.ps1 -Action Remove` is the complete-off path and removes the startup entry, enabled flag, and installed executable. A later `Enable` turns the same five-minute overlay back on.
+`Disable` is the fast-off path. It stops any Windows Bubbles process at the exact system path, clears the project-owned enabled flag, and keeps Windows' automatic trigger off. `Remove` is the complete uninstall path. A later `Enable` reuses the same five-minute profile.
 
-The first `Enable` stores the rollback record at `%LOCALAPPDATA%\EmeraldVeil\native-bubbles-preimage.json`. It is preserved across repeated enables and must not be published because it is machine-specific. `Restore` may also restore a legacy Emerald Veil startup entry if that entry existed in the captured state; use `Disable` for the normal “turn it off” operation.
+The first `Enable` stores its rollback record at `%LOCALAPPDATA%\EmeraldVeil\native-bubbles-preimage.json`. Repeated enables do not overwrite it. The record is machine-specific and must not be published.
 
-See [the product design](docs/product-design.md) for the exact Windows settings and rollback contract. The project does not implement or modify the bubble visual; the visible renderer remains Microsoft's installed `Bubbles.scr`.
+See [the product design](docs/product-design.md) for the window contract, configuration, acceptance checks, and rollback rules. The project does not redistribute `Bubbles.scr` or Microsoft visual assets.
 
 ## License
 
-The project-authored configuration code is released under the [MIT License](LICENSE). `Bubbles.scr` and its visuals are Windows components and are not redistributed by this repository.
+Project-authored code is released under the [MIT License](LICENSE). `Bubbles.scr` and its visuals remain Windows components under Microsoft's terms.

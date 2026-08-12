@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows.Threading;
 using EmeraldVeil.Core;
 
@@ -136,18 +137,36 @@ internal sealed class VeilController : IAsyncDisposable
             _lastMode = mode;
         }
 
+        if (_window.Dispatcher.CheckAccess())
+        {
+            ApplyMode(mode);
+            return;
+        }
+
         _ = _window.Dispatcher.InvokeAsync(
-            () =>
-            {
-                if (mode == VeilMode.Hidden)
-                {
-                    _window.HideVeil();
-                }
-                else
-                {
-                    _window.ShowVeil(force: mode == VeilMode.Preview);
-                }
-            },
+            () => ApplyMode(mode),
             DispatcherPriority.Send);
+    }
+
+    private void ApplyMode(VeilMode mode)
+    {
+        try
+        {
+            if (mode == VeilMode.Hidden)
+            {
+                _window.HideVeil();
+            }
+            else
+            {
+                _window.ShowVeil(force: mode == VeilMode.Preview);
+            }
+        }
+        catch (Exception exception)
+        {
+            // Rendering failures are fail-closed: do not leave a native
+            // screen-saver window behind or crash the silent watchdog.
+            Debug.WriteLine($"Unable to apply veil mode {mode}: {exception}");
+            _window.HideVeil();
+        }
     }
 }
