@@ -16,7 +16,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WPF needs process DPI awareness before its first HWND; WinForms is tray-only. -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
-    <Version>0.1.5</Version>
+    <Version>0.1.6</Version>
   </PropertyGroup>
 
 </Project>

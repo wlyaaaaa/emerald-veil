@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 
 namespace EmeraldVeil.App;
 
@@ -81,14 +82,14 @@ public partial class App : System.Windows.Application
             if (arguments.Contains("--install-startup", StringComparer.OrdinalIgnoreCase))
             {
                 startAtLogin.Enable();
-                Shutdown(0);
+                QueueShutdown(0);
                 return true;
             }
 
             if (arguments.Contains("--remove-startup", StringComparer.OrdinalIgnoreCase))
             {
                 startAtLogin.Disable();
-                Shutdown(0);
+                QueueShutdown(0);
                 return true;
             }
 
@@ -96,9 +97,19 @@ public partial class App : System.Windows.Application
         }
         catch
         {
-            Shutdown(1);
+            QueueShutdown(1);
             return true;
         }
+    }
+
+    private void QueueShutdown(int exitCode)
+    {
+        // A synchronous Shutdown call made from OnStartup can be superseded
+        // while WPF is still entering its dispatcher loop. Queue it so the
+        // maintenance-only process exits as soon as startup unwinds.
+        _ = Dispatcher.BeginInvoke(
+            () => Shutdown(exitCode),
+            DispatcherPriority.Send);
     }
 
     private static TimeSpan ReadActivationDelay(IEnumerable<string> arguments)
