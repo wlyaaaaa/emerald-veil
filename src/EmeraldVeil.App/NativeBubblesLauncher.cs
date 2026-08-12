@@ -328,30 +328,35 @@ internal sealed class NativeBubblesLauncher : IDisposable
 
     private static bool IsNativeBubblesRunningInCurrentSession()
     {
-        foreach (var candidate in Process.GetProcessesByName("Bubbles"))
+        // Windows 11 reports the native renderer as "Bubbles.scr". Keep the
+        // extensionless name as a compatibility fallback for older builds.
+        foreach (string processName in new[] { "Bubbles.scr", "Bubbles" })
         {
-            using (candidate)
+            foreach (var candidate in Process.GetProcessesByName(processName))
             {
-                try
+                using (candidate)
                 {
-                    if (!candidate.HasExited && candidate.SessionId == CurrentSessionId)
+                    try
                     {
-                        // This is deliberately a refusal, not a cleanup. It
-                        // covers a Windows/manual instance and an older build
-                        // that predates the session lease without killing it.
+                        if (!candidate.HasExited && candidate.SessionId == CurrentSessionId)
+                        {
+                            // This is deliberately a refusal, not a cleanup. It
+                            // covers a Windows/manual instance and an older build
+                            // that predates the session lease without killing it.
+                            return true;
+                        }
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // The candidate exited while it was inspected.
+                    }
+                    catch (System.ComponentModel.Win32Exception)
+                    {
+                        // If the current-session process cannot be inspected,
+                        // fail closed and avoid creating a potentially duplicate
+                        // native overlay.
                         return true;
                     }
-                }
-                catch (InvalidOperationException)
-                {
-                    // The candidate exited while it was inspected.
-                }
-                catch (System.ComponentModel.Win32Exception)
-                {
-                    // If the current-session process cannot be inspected,
-                    // fail closed and avoid creating a potentially duplicate
-                    // native overlay.
-                    return true;
                 }
             }
         }
