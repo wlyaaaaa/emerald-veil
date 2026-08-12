@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Threading;
 
 namespace EmeraldVeil.App;
 
@@ -20,7 +19,9 @@ public partial class App : System.Windows.Application
             ?? throw new InvalidOperationException("The executable path is unavailable.");
         var startAtLogin = new StartAtLoginService(executablePath);
 
-        if (TryHandleMaintenanceCommand(e.Args, startAtLogin))
+        if (TryHandleMaintenanceCommand(
+                Environment.GetCommandLineArgs().Skip(1).ToArray(),
+                startAtLogin))
         {
             return;
         }
@@ -82,14 +83,14 @@ public partial class App : System.Windows.Application
             if (arguments.Contains("--install-startup", StringComparer.OrdinalIgnoreCase))
             {
                 startAtLogin.Enable();
-                QueueShutdown(0);
+                Environment.Exit(0);
                 return true;
             }
 
             if (arguments.Contains("--remove-startup", StringComparer.OrdinalIgnoreCase))
             {
                 startAtLogin.Disable();
-                QueueShutdown(0);
+                Environment.Exit(0);
                 return true;
             }
 
@@ -97,19 +98,9 @@ public partial class App : System.Windows.Application
         }
         catch
         {
-            QueueShutdown(1);
+            Environment.Exit(1);
             return true;
         }
-    }
-
-    private void QueueShutdown(int exitCode)
-    {
-        // A synchronous Shutdown call made from OnStartup can be superseded
-        // while WPF is still entering its dispatcher loop. Queue it so the
-        // maintenance-only process exits as soon as startup unwinds.
-        _ = Dispatcher.BeginInvoke(
-            () => Shutdown(exitCode),
-            DispatcherPriority.Send);
     }
 
     private static TimeSpan ReadActivationDelay(IEnumerable<string> arguments)
