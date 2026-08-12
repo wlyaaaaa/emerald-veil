@@ -2,73 +2,60 @@
 
 ## Product contract
 
-Emerald Veil protects a Windows OLED display without replacing the foreground experience. Its default state machine is:
+The active product is a reversible configuration of the Windows-native Bubbles screen saver:
 
-1. **Hidden** — while the session has had input in the last five minutes.
-2. **Idle** — a click-through, non-activating emerald veil covers the primary display.
-3. **Hidden again** — any newly observed keyboard or mouse input dismisses the veil.
-4. **Preview** — an explicit tray command shows the same effect for at most 15 seconds; input also dismisses it.
-5. **Paused** — automatic activation stays disabled until resumed.
+1. While input is active, Windows leaves the normal desktop visible.
+2. After 300 seconds of Windows-observed inactivity, Windows starts its installed `Bubbles.scr`.
+3. Bubbles use Microsoft's native multicolor glass visual and motion with a larger private radius value.
+4. Normal input exits the screen saver without an unlock prompt.
+5. `Disable` immediately turns automatic activation off; `Enable` turns the same profile back on.
 
-The veil is intentionally not a conventional lock-screen screensaver: the original application remains visible and continues running.
+The native saver displays a frozen desktop image behind its animation. The foreground application may continue computing, but its new frames are not visible until the saver exits. This accepted tradeoff replaces the rejected custom transparent-overlay design.
 
-## Visual system
+## Windows configuration
 
-The base layer is translucent black at roughly 26% opacity. Four oversized radial fields use low-alpha near-black emerald colors and independent multi-minute paths. They have no sharp boundary, text, logo, blur, or bright highlight. The result is a quiet dark-green atmospheric shift rather than visible objects moving across the screen.
+`Enable` writes these per-user values and applies the corresponding runtime state through `SystemParametersInfoW`:
 
-The base dimming is the meaningful OLED intervention. The moving fields keep the added layer from being static, but cannot move or erase the original pixels underneath. The product therefore avoids claiming burn-in prevention or guaranteed panel-life extension.
+| Location | Name | Type | Value |
+| --- | --- | --- | --- |
+| `HKCU\Control Panel\Desktop` | `SCRNSAVE.EXE` | `REG_SZ` | `%WINDIR%\System32\Bubbles.scr` resolved to an absolute path |
+| `HKCU\Control Panel\Desktop` | `ScreenSaveTimeOut` | `REG_SZ` | `300` |
+| `HKCU\Control Panel\Desktop` | `ScreenSaveActive` | `REG_SZ` | `1` |
+| `HKCU\Control Panel\Desktop` | `ScreenSaverIsSecure` | `REG_SZ` | `0` |
+| `HKCU\Software\Microsoft\Windows\CurrentVersion\Screensavers\Bubbles` | `Radius` | `REG_DWORD` | `1130000000` (`0x435A6E80`) |
 
-## Architecture
+The `Radius` bit pattern is approximately `218.43` when interpreted as the private single-precision value used by Bubbles, giving a nominal diameter of about 437 physical pixels. Windows owns rendering and display scaling; the project does not apply WPF DPI conversion, so there is no custom 150%/200% scaling path to drift.
 
-```text
-GetLastInputInfo + GetTickCount/GetTickCount64
-                |
-                v
-        IdleTimeline (pure core)
-                |
-                v
-       VeilActivationPolicy
-                |
-                v
-   VeilController (50 ms monitor)
-                |
-                v
-  VeilWindow + VeilSurface (WPF)
-```
+The script calls the standard Windows screen-saver setters for active state, timeout, and secure-exit state with persistent settings and a settings-change broadcast. An extra logon process is neither needed nor installed: Windows reads the per-user screen-saver settings for each login session.
 
-- `EmeraldVeil.Core` reconstructs a conservative 64-bit idle timeline from Win32's 32-bit last-input timestamp. A failed or ambiguous read keeps the veil hidden.
-- `EmeraldVeil.App` owns the Windows session monitor, tray icon, startup setting, and WPF presentation.
-- The WPF window uses `WS_EX_LAYERED`, `WS_EX_TRANSPARENT`, `WS_EX_NOACTIVATE`, and `WS_EX_TOOLWINDOW`, plus `HTTRANSPARENT` and `MA_NOACTIVATE` message handling.
-- The application manifest declares Per-Monitor V2 DPI awareness; the overlay is repositioned when display or DPI messages arrive.
-- The rendering timer runs at about 15 FPS only while the veil is visible. Hidden mode stops animation and hides the window.
-- Startup is a direct per-user WinExe launch from a stable LocalAppData installation directory.
+## Reversibility
 
-## Input-clock rules
+Before the first mutation, `Enable` captures:
 
-`GetLastInputInfo` is session-specific and its 32-bit timestamp is not guaranteed to increase monotonically. Emerald Veil therefore:
+- the three Windows runtime values: active, timeout, and secure exit;
+- exact presence, registry kind, and value for all five native profile values;
+- the legacy Emerald Veil `Run`, `StartupApproved`, and ownership values.
 
-- treats any timestamp change, including a backward change, as activity;
-- uses unsigned modulo arithmetic for the initial short-duration reconstruction;
-- treats an initial future/ambiguous timestamp conservatively as unknown;
-- carries continuous runtime duration on `GetTickCount64`;
-- stays hidden when the API read fails.
+The record is written once to `%LOCALAPPDATA%\EmeraldVeil\native-bubbles-preimage.json` using a flushed same-directory temporary file followed by an atomic move. Repeated `Enable` operations validate but do not overwrite it.
 
-Polling a last-known state is best effort rather than a mathematical event-stream guarantee. The 50 ms cadence is chosen to dismiss quickly without installing global keyboard or mouse hooks.
+`Restore` accepts only the fixed eight-value registry identity set, restores the runtime and registry preimage, and then independently reads every value back. `Disable` intentionally has the smaller safety contract: write and prove `ScreenSaveActive=0` and runtime active=false even if the radius or other nonessential values have drifted.
 
-## Scope and known limits
+The legacy custom executable is not deleted during migration. Its owned startup entry is removed through its maintenance interface, leaving the binary available for an explicit rollback. The normal way to stop the native product is `Disable`, not `Restore`.
 
-- v0.1 protects the Windows primary display only.
-- Windows secure desktop, UAC prompts, lock screen, exclusive fullscreen applications, and other topmost windows can appear above it.
-- Touch and pen behavior is not claimed until separately tested.
-- An unresponsive WPF UI thread can delay hiding.
-- Initial idle age older than the 32-bit tick horizon cannot always be reconstructed exactly; ambiguous state fails closed by keeping the veil hidden.
+## Scope and limits
+
+- This profile depends on the Windows-installed `C:\Windows\System32\Bubbles.scr`; the repository does not redistribute it or Microsoft visual assets.
+- `Radius` is an undocumented implementation parameter and may change in a future Windows build. `Verify` fails instead of silently accepting a wrong type or value.
+- The frozen desktop means the user cannot watch live Codex output while the saver is visible.
+- Moving animation can reduce prolonged static-image exposure, but no software screen saver guarantees protection from OLED burn-in.
+- Display-off and sleep timers are separate. If Windows turns the panel off before 300 seconds, the screen saver will not be seen; a powered-off panel is still the stronger OLED-protection state.
+- Group policy, device management, secure desktop, remote sessions, and future Windows changes can override or alter screen-saver behavior.
 
 ## Acceptance checklist
 
-- Core unit tests pass.
-- Release publish produces a self-contained x64 WinExe.
-- Visible overlay has the required extended styles, primary-screen bounds, and `HTTRANSPARENT` response.
-- Showing the veil does not change the foreground window.
-- Injected benign input hides the veil within the measured runtime target.
-- The installed process has no PowerShell, cmd, wscript, or console host child.
-- The HKCU Run value points directly to the installed executable and passes read-back verification.
+- PowerShell parsing and the embedded `SystemParametersInfoW` interop compile successfully.
+- `Enable` reads back the absolute native path, all registry kinds and values, and runtime active/timeout/secure state.
+- The legacy Emerald Veil startup entry and ownership metadata are absent after migration; its executable remains byte-identical.
+- `Disable` proves automatic activation is off without depending on unrelated profile values.
+- `Enable` is idempotent and does not change the durable preimage hash.
+- `Restore` reproduces exact value presence, kinds, values, and runtime state, after which `Enable` can safely reapply the native profile.

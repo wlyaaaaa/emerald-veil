@@ -1,67 +1,44 @@
 # Emerald Veil
 
-Emerald Veil is a lightweight, click-through OLED protection layer for Windows. After five minutes without keyboard or mouse input, it places a dark, slowly drifting emerald veil over the primary display. Everything underneath remains visible and interactive. The first new input hides the veil immediately.
+Emerald Veil is now a small, reversible Windows-native Bubbles profile for OLED idle use. It selects the copy of `Bubbles.scr` already supplied by Windows, starts it after five minutes of user inactivity, enlarges the bubbles, and exits on normal input.
 
-> 中文：无操作 5 分钟后，主屏会出现一层低亮、缓慢漂移的深绿色保护层；Codex 和其他窗口仍然可见。鼠标或键盘一有操作，保护层立即消失。
+Windows owns the idle trigger, so there is no background Emerald Veil process, `Run` entry, scheduled task, or console window at sign-in. The setting persists across reboot and becomes active for the user session after login.
 
-## Why this design
+## Important behavior
 
-The effect combines two ideas:
+- Idle timeout: 300 seconds.
+- Visual: Microsoft Windows native multicolor glass bubbles with an enlarged radius.
+- Exit: normal keyboard or mouse input ends the screen saver.
+- Unlock prompt: disabled by this profile.
+- Foreground: the native Bubbles screen saver uses a frozen desktop image. Codex or another foreground app can continue working, but its visual updates are not shown until the screen saver exits.
+- OLED protection: moving bubbles replace a fully static foreground while idle, but this is not a burn-in guarantee and does not replace sensible brightness, pixel shifting, or panel maintenance.
 
-- a uniform dark layer reduces sustained OLED light output while preserving readability;
-- large, low-contrast emerald fields move slowly so the veil does not add a fixed high-contrast pattern of its own.
+The private `Radius` setting is not a documented Windows API. This project therefore records an exact preimage before changing it and provides a full restore operation.
 
-This is deliberately calmer than a bubble screensaver. It has no labels, sharp edges, particles, blur, or bright objects. The animation runs at 15 FPS only while visible and stops completely when hidden.
+## Use
 
-Emerald Veil is an extra risk-reduction layer, not a substitute for the display's built-in pixel refresh, pixel orbiting, taskbar dimming, or normal brightness management. Because the original image remains visible, its pixels are still active; the protective benefit comes primarily from reduced luminance.
-
-## Behavior
-
-- Activates after 5 minutes of session keyboard/mouse inactivity.
-- Covers the Windows primary display in v0.1.
-- Never takes focus and is absent from Alt+Tab and the taskbar.
-- Passes mouse input through to the application underneath.
-- Polls the Windows last-input clock every 50 ms and hides at high dispatcher priority.
-- Includes a tray menu for a 15-second preview, pause, start-with-Windows, and exit.
-- Captures no screen content, stores no activity history, opens no network connection, and has no telemetry.
-
-## Install
-
-Windows 11 x64 is the tested target. PowerShell 7 and the .NET 10 SDK are needed to build from source.
+PowerShell 7 on Windows 11 is the tested target. Administrator rights are not required.
 
 ```powershell
-dotnet publish .\src\EmeraldVeil.App\EmeraldVeil.App.csproj `
-  --configuration Release `
-  --runtime win-x64 `
-  --self-contained true `
-  -p:PublishSingleFile=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true `
-  -p:EnableCompressionInSingleFile=true `
-  --output .\artifacts\publish\win-x64
+# Configure native Bubbles and enable the five-minute idle trigger.
+pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Enable
 
-pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Install
+# Confirm the selected saver, timeout, value types, radius, and Windows runtime state.
+pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Verify
+
+# Immediately disable automatic screen-saver activation while keeping the profile ready.
+pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Disable
+
+# Restore the exact state captured before the first Enable operation.
+pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Restore
 ```
 
-The installer copies the single executable to `%LOCALAPPDATA%\Programs\EmeraldVeil\EmeraldVeil.exe` and creates a direct per-user `HKCU Run` entry. It does not require administrator rights and does not use a PowerShell, cmd, or script wrapper at logon.
+`Disable` is deliberately independent of bubble-size or other profile drift: it only needs to prove that Windows automatic screen-saver activation is off. A later `Enable` turns the same five-minute profile back on.
 
-Verify or remove it with:
+The first `Enable` stores the rollback record at `%LOCALAPPDATA%\EmeraldVeil\native-bubbles-preimage.json`. It is preserved across repeated enables and must not be published because it is machine-specific. `Restore` may also restore a legacy Emerald Veil startup entry if that entry existed in the captured state; use `Disable` for the normal “turn it off” operation.
 
-```powershell
-pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Verify
-pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Remove
-```
-
-## Development
-
-```powershell
-dotnet build .\EmeraldVeil.slnx --configuration Debug
-dotnet test .\EmeraldVeil.slnx --configuration Debug
-```
-
-For a fast local idle test, run the Debug executable with `--idle-seconds=2`. `--preview` displays the effect immediately for at most 15 seconds.
-
-The core idle-clock logic is separated from WPF and covered by tests for the five-minute boundary, Win32 tick rollover, non-monotonic input timestamps, read failure, pause, and preview behavior. See [the product design](docs/product-design.md) for the architecture and limitations.
+See [the product design](docs/product-design.md) for the exact Windows settings and rollback contract. The older custom WPF/D3D experiment remains legacy source only and is not installed or started by this profile.
 
 ## License
 
-[MIT](LICENSE)
+The project-authored configuration code is released under the [MIT License](LICENSE). `Bubbles.scr` and its visuals are Windows components and are not redistributed by this repository.
