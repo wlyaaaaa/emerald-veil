@@ -66,12 +66,24 @@ internal sealed class VeilController : IAsyncDisposable
 
     internal void RequestPreview()
     {
+        RequestExplicitDisplay(PreviewDuration);
+    }
+
+    internal void RequestImmediateDisplay()
+    {
+        RequestExplicitDisplay(timeout: null);
+    }
+
+    private void RequestExplicitDisplay(TimeSpan? timeout)
+    {
         var sample = _inputSource.Read();
         lock (_stateLock)
         {
             _previewRequested = true;
             _previewBaselineInputTick = sample.LastInputTick32;
-            _previewDeadlineTick64 = sample.CurrentTick64 + (ulong)PreviewDuration.TotalMilliseconds;
+            _previewDeadlineTick64 = timeout is null
+                ? ulong.MaxValue
+                : sample.CurrentTick64 + (ulong)timeout.Value.TotalMilliseconds;
         }
 
         QueueMode(VeilMode.Preview);

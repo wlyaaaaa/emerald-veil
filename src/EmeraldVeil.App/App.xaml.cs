@@ -42,7 +42,11 @@ public partial class App : System.Windows.Application
         _trayIcon = new TrayIconHost(_controller, startAtLogin, Shutdown);
         _controller.Start();
 
-        if (e.Args.Contains("--preview", StringComparer.OrdinalIgnoreCase))
+        if (e.Args.Contains("--show-now", StringComparer.OrdinalIgnoreCase))
+        {
+            _controller.RequestImmediateDisplay();
+        }
+        else if (e.Args.Contains("--preview", StringComparer.OrdinalIgnoreCase))
         {
             _controller.RequestPreview();
         }
