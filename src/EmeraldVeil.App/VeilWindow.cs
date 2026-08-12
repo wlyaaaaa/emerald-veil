@@ -40,21 +40,20 @@ internal sealed class VeilWindow : Window, IDisposable
         ApplyExtendedWindowStyles();
     }
 
-    internal bool IsVeilVisible => IsVisible && Opacity > 0;
+    internal bool IsVeilVisible => _nativeBubbles.IsRunning;
 
     internal void ShowVeil(bool force = false)
     {
         ThrowIfDisposed();
 
-        // Preview is explicit. Automatic activation also has a separate
-        // watchdog, but this guard makes Disable effective immediately even
-        // if one final controller tick is already queued on the dispatcher.
-        if (!force && !NativeMethods.GetScreenSaverActive())
+        // Preview is explicit. Automatic activation uses the project-owned
+        // setting because Windows' own full-screen saver trigger stays off.
+        if (!force && !NativeBubblesSettings.IsEnabled())
         {
             return;
         }
 
-        _nativeBubbles.Start();
+        _nativeBubbles.Start(GetTargetBounds());
     }
 
     internal void HideVeil()
@@ -75,6 +74,17 @@ internal sealed class VeilWindow : Window, IDisposable
 
     internal NativeMethods.Rect ReadPhysicalBounds()
     {
+        if (_nativeBubbles.TryGetBounds(out var hostBounds))
+        {
+            return new NativeMethods.Rect
+            {
+                Left = hostBounds.Left,
+                Top = hostBounds.Top,
+                Right = hostBounds.Right,
+                Bottom = hostBounds.Bottom,
+            };
+        }
+
         _ = NativeMethods.GetWindowRect(_windowHandle, out var bounds);
         return bounds;
     }
@@ -117,23 +127,11 @@ internal sealed class VeilWindow : Window, IDisposable
         NativeMethods.SetWindowLongPtr(_windowHandle, NativeMethods.GwlExStyle, new nint(updated));
     }
 
-    private void PositionOnTargetDisplay()
+    private static System.Drawing.Rectangle GetTargetBounds()
     {
         var target = Forms.Screen.PrimaryScreen
             ?? throw new InvalidOperationException("No primary display is available.");
-        var bounds = target.Bounds;
-
-        if (!NativeMethods.SetWindowPos(
-                _windowHandle,
-                NativeMethods.HwndTopmost,
-                bounds.X,
-                bounds.Y,
-                bounds.Width,
-                bounds.Height,
-                NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow))
-        {
-            throw new Win32Exception();
-        }
+        return target.Bounds;
     }
 
     private nint WindowMessageHook(
@@ -157,7 +155,7 @@ internal sealed class VeilWindow : Window, IDisposable
             case NativeMethods.WmDpiChanged:
                 if (IsVeilVisible)
                 {
-                    _ = Dispatcher.BeginInvoke(PositionOnTargetDisplay);
+                    _ = Dispatcher.BeginInvoke(() => _nativeBubbles.Restart(GetTargetBounds()));
                 }
 
                 break;

@@ -239,6 +239,13 @@ switch ($Action) {
 
         Remove-OwnedLegacyRunValue
 
+        if (Test-Path -LiteralPath $ownerKeyPath) {
+            Remove-ItemProperty `
+                -LiteralPath $ownerKeyPath `
+                -Name 'NativeBubblesEnabled' `
+                -ErrorAction SilentlyContinue
+        }
+
         Stop-OwnedProcess
         Remove-OwnedFile -Path $targetPath
         Remove-OwnedFile -Path "$targetPath.previous"

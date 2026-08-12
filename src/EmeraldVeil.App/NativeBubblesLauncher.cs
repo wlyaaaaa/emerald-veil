@@ -1,12 +1,14 @@
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
+using Forms = System.Windows.Forms;
 
 namespace EmeraldVeil.App;
 
 /// <summary>
-/// Starts and stops only the Windows-provided Bubbles screen saver.
-/// The path check is intentional: a same-named third-party process is never
-/// treated as owned by Emerald Veil.
+/// Hosts the Windows-provided Bubbles renderer in preview mode. Preview mode
+/// is a normal desktop window, not a Windows screen-saver session, so remote
+/// desktop/capture products keep their normal session and display pipeline.
 /// </summary>
 internal sealed class NativeBubblesLauncher : IDisposable
 {
@@ -14,11 +16,28 @@ internal sealed class NativeBubblesLauncher : IDisposable
         Environment.SystemDirectory,
         "Bubbles.scr");
 
+    private BubblesPreviewHost? _host;
+    private Process? _process;
     private bool _disposed;
 
-    internal string ScreenSaverPath => _screenSaverPath;
+    internal bool IsRunning =>
+        _host is not null &&
+        _process is not null &&
+        !_process.HasExited;
 
-    internal bool Start()
+    internal bool TryGetBounds(out Rectangle bounds)
+    {
+        if (_host is null || _host.IsDisposed)
+        {
+            bounds = Rectangle.Empty;
+            return false;
+        }
+
+        bounds = _host.Bounds;
+        return true;
+    }
+
+    internal bool Start(Rectangle physicalBounds)
     {
         ThrowIfDisposed();
 
@@ -29,37 +48,51 @@ internal sealed class NativeBubblesLauncher : IDisposable
                 _screenSaverPath);
         }
 
-        if (FindOwnedProcesses().Count > 0)
+        if (IsRunning)
         {
             return false;
         }
 
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = _screenSaverPath,
-            Arguments = "/s",
-            WorkingDirectory = Path.GetDirectoryName(_screenSaverPath)!,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden,
-        });
+        Stop();
 
-        if (process is null)
+        var host = new BubblesPreviewHost(physicalBounds);
+        try
         {
-            throw new InvalidOperationException("Windows Bubbles did not start.");
+            host.Show();
+            var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = _screenSaverPath,
+                Arguments = $"/p {host.Handle.ToInt64()}",
+                WorkingDirectory = Path.GetDirectoryName(_screenSaverPath)!,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            }) ?? throw new InvalidOperationException("Windows Bubbles did not start.");
+
+            _host = host;
+            _process = process;
+            return true;
         }
+        catch
+        {
+            host.Close();
+            host.Dispose();
+            throw;
+        }
+    }
 
-        return true;
+    internal void Restart(Rectangle physicalBounds)
+    {
+        ThrowIfDisposed();
+        Stop();
+        _ = Start(physicalBounds);
     }
 
     internal void Stop()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
-        foreach (var process in FindOwnedProcesses())
+        var process = _process;
+        _process = null;
+        if (process is not null)
         {
             using (process)
             {
@@ -73,13 +106,21 @@ internal sealed class NativeBubblesLauncher : IDisposable
                 }
                 catch (InvalidOperationException)
                 {
-                    // The saver exited between enumeration and the stop call.
+                    // The preview renderer exited between checks.
                 }
                 catch (System.ComponentModel.Win32Exception)
                 {
-                    // A process that is no longer accessible is not ours to force.
+                    // A process that is no longer accessible is not retried.
                 }
             }
+        }
+
+        var host = _host;
+        _host = null;
+        if (host is not null)
+        {
+            host.Close();
+            host.Dispose();
         }
     }
 
@@ -94,49 +135,53 @@ internal sealed class NativeBubblesLauncher : IDisposable
         _disposed = true;
     }
 
-    private List<Process> FindOwnedProcesses()
-    {
-        var owned = new List<Process>();
-        foreach (var process in EnumerateBubblesProcesses())
-        {
-            try
-            {
-                var path = process.MainModule?.FileName;
-                if (path is not null &&
-                    string.Equals(
-                        Path.GetFullPath(path),
-                        Path.GetFullPath(_screenSaverPath),
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    owned.Add(process);
-                    continue;
-                }
-            }
-            catch (System.ComponentModel.Win32Exception)
-            {
-                // Access-denied processes are deliberately ignored.
-            }
-            catch (InvalidOperationException)
-            {
-                // The process exited during inspection.
-            }
-
-            process.Dispose();
-        }
-
-        return owned;
-    }
-
-    private static IEnumerable<Process> EnumerateBubblesProcesses()
-    {
-        foreach (var name in new[] { "Bubbles.scr", "Bubbles" })
-        {
-            foreach (var process in Process.GetProcessesByName(name))
-            {
-                yield return process;
-            }
-        }
-    }
-
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
+    private sealed class BubblesPreviewHost : Forms.Form
+    {
+        internal BubblesPreviewHost(Rectangle physicalBounds)
+        {
+            Text = "Emerald Veil Native Bubbles Host";
+            AutoScaleMode = Forms.AutoScaleMode.None;
+            FormBorderStyle = Forms.FormBorderStyle.None;
+            StartPosition = Forms.FormStartPosition.Manual;
+            ShowInTaskbar = false;
+            TopMost = true;
+            Bounds = physicalBounds;
+            BackColor = Color.Black;
+            TransparencyKey = Color.Black;
+        }
+
+        protected override bool ShowWithoutActivation => true;
+
+        protected override Forms.CreateParams CreateParams
+        {
+            get
+            {
+                var parameters = base.CreateParams;
+                parameters.ExStyle |= checked((int)(
+                    NativeMethods.WsExTransparent |
+                    NativeMethods.WsExToolWindow |
+                    NativeMethods.WsExLayered |
+                    NativeMethods.WsExNoActivate));
+                return parameters;
+            }
+        }
+
+        protected override void WndProc(ref Forms.Message message)
+        {
+            switch (message.Msg)
+            {
+                case NativeMethods.WmNchittest:
+                    message.Result = new nint(NativeMethods.HtTransparent);
+                    return;
+
+                case NativeMethods.WmMouseActivate:
+                    message.Result = new nint(NativeMethods.MaNoActivate);
+                    return;
+            }
+
+            base.WndProc(ref message);
+        }
+    }
 }
