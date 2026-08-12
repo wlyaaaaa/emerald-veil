@@ -4,7 +4,7 @@ Emerald Veil is a small, reversible Windows-native Bubbles overlay for OLED idle
 
 The installed WinExe is a quiet user-session watchdog. It samples `GetLastInputInfo`, manually starts `Bubbles.scr /s`, finds the exact child process window, turns black background pixels transparent, and makes that window topmost, non-activating, and click-through. Windows' own automatic screen-saver and lock trigger remains disabled. No screenshot, checkerboard, replacement background, custom bubble renderer, network, telemetry, scheduled task, PowerShell wrapper, or product-name allowlist is used.
 
-Startup is deliberately per-user through a direct `HKCU\...\Run` WinExe entry. It must not run as `SYSTEM`: Session 0 cannot draw on the signed-in user's desktop. Every renderer is assigned to a kill-on-close Windows Job Object, so input, Disable, watchdog exit, crash, or restart cannot leave an old Bubbles instance to overlap the next one.
+Startup is deliberately per-user through a direct `HKCU\...\Run` WinExe entry. It must not run as `SYSTEM`: Session 0 cannot draw on the signed-in user's desktop. A crash-safe, cross-process session lease refuses a second renderer without killing or taking over an existing one. Every owned renderer is also assigned to a kill-on-close Windows Job Object, so input, Disable, watchdog exit, crash, or restart cannot leave an old Bubbles instance to overlap the next one.
 
 ## Behavior
 

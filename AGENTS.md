@@ -8,4 +8,5 @@
 - Do not add screen capture, telemetry, networking, persistent activity logging, or global input hooks.
 - Remote compatibility is architectural: stay on the signed-in user's current desktop, never enter secure desktop/lock state, remain click-through, and never special-case a fixed list of remote-control product names.
 - Each launched `Bubbles.scr` must belong to a kill-on-close Job Object. Watchdog exit, crash, restart, input dismissal, and explicit Disable must not leave a renderer that can overlap a later instance.
+- A cross-process session lease plus a read-only current-session Bubbles check must refuse a duplicate renderer. Do not kill or take over an existing native instance merely to obtain the lease.
 - The repository is public. Never add credentials, machine snapshots, raw logs, private screenshots, local databases, personal paths, or a captured preimage.

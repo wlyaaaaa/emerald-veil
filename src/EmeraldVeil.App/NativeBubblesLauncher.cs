@@ -16,6 +16,11 @@ internal sealed class NativeBubblesLauncher : IDisposable
     private static readonly TimeSpan InitializationTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan InitializationPollInterval = TimeSpan.FromMilliseconds(5);
     private static readonly TimeSpan MaintenancePollInterval = TimeSpan.FromMilliseconds(250);
+    private static readonly int CurrentSessionId = Process.GetCurrentProcess().SessionId;
+    private static readonly string SessionLeasePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "EmeraldVeil",
+        $"native-bubbles-session-{CurrentSessionId}.lock");
     private const long RequiredExtendedStyles =
         NativeMethods.WsExTransparent |
         NativeMethods.WsExToolWindow |
@@ -29,6 +34,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
 
     private Process? _process;
     private SafeFileHandle? _jobHandle;
+    private FileStream? _sessionLease;
     private CancellationTokenSource? _maintenanceCancellation;
     private Task? _maintenanceTask;
     private Rectangle _physicalBounds;
@@ -81,9 +87,17 @@ internal sealed class NativeBubblesLauncher : IDisposable
 
         Process? process = null;
         SafeFileHandle? jobHandle = null;
+        FileStream? sessionLease = null;
         CancellationTokenSource? cancellation = null;
         try
         {
+            sessionLease = TryAcquireSessionLease();
+            if (sessionLease is null || IsNativeBubblesRunningInCurrentSession())
+            {
+                sessionLease?.Dispose();
+                return false;
+            }
+
             process = Process.Start(new ProcessStartInfo
             {
                 FileName = _screenSaverPath,
@@ -105,6 +119,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
 
                 _process = process;
                 _jobHandle = jobHandle;
+                _sessionLease = sessionLease;
                 _physicalBounds = physicalBounds;
                 _windowHandle = nint.Zero;
                 _maintenanceCancellation = cancellation;
@@ -112,7 +127,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
                     () => MaintainOverlayWindow(process, physicalBounds, cancellation.Token),
                     CancellationToken.None);
                 _ = _maintenanceTask.ContinueWith(
-                    _ => FinishSession(process, jobHandle, cancellation),
+                    _ => FinishSession(process, jobHandle, sessionLease, cancellation),
                     CancellationToken.None,
                     TaskContinuationOptions.ExecuteSynchronously,
                     TaskScheduler.Default);
@@ -125,6 +140,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
             cancellation?.Cancel();
             jobHandle?.Dispose();
             TerminateProcess(process);
+            sessionLease?.Dispose();
             cancellation?.Dispose();
             process?.Dispose();
             throw;
@@ -142,16 +158,19 @@ internal sealed class NativeBubblesLauncher : IDisposable
     {
         Process? process;
         SafeFileHandle? jobHandle;
+        FileStream? sessionLease;
         CancellationTokenSource? cancellation;
         nint windowHandle;
         lock (_stateLock)
         {
             process = _process;
             jobHandle = _jobHandle;
+            sessionLease = _sessionLease;
             cancellation = _maintenanceCancellation;
             windowHandle = _windowHandle;
             _process = null;
             _jobHandle = null;
+            _sessionLease = null;
             _maintenanceCancellation = null;
             _maintenanceTask = null;
             _physicalBounds = Rectangle.Empty;
@@ -182,6 +201,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
         // retained as a best-effort fallback for the exact process handle.
         jobHandle?.Dispose();
         TerminateProcess(process);
+        sessionLease?.Dispose();
     }
 
     public void Dispose()
@@ -261,6 +281,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
     private void FinishSession(
         Process process,
         SafeFileHandle jobHandle,
+        FileStream sessionLease,
         CancellationTokenSource cancellation)
     {
         lock (_stateLock)
@@ -269,6 +290,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
             {
                 _process = null;
                 _jobHandle = null;
+                _sessionLease = null;
                 _maintenanceCancellation = null;
                 _maintenanceTask = null;
                 _physicalBounds = Rectangle.Empty;
@@ -277,8 +299,64 @@ internal sealed class NativeBubblesLauncher : IDisposable
         }
 
         jobHandle.Dispose();
+        TerminateProcess(process);
+        sessionLease.Dispose();
         cancellation.Dispose();
         process.Dispose();
+    }
+
+    private static FileStream? TryAcquireSessionLease()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(SessionLeasePath)!);
+        try
+        {
+            return new FileStream(
+                SessionLeasePath,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                bufferSize: 1,
+                FileOptions.DeleteOnClose);
+        }
+        catch (IOException)
+        {
+            // Another process already owns the native renderer. Refuse a
+            // second layer; never terminate or take over an unknown owner.
+            return null;
+        }
+    }
+
+    private static bool IsNativeBubblesRunningInCurrentSession()
+    {
+        foreach (var candidate in Process.GetProcessesByName("Bubbles"))
+        {
+            using (candidate)
+            {
+                try
+                {
+                    if (!candidate.HasExited && candidate.SessionId == CurrentSessionId)
+                    {
+                        // This is deliberately a refusal, not a cleanup. It
+                        // covers a Windows/manual instance and an older build
+                        // that predates the session lease without killing it.
+                        return true;
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // The candidate exited while it was inspected.
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    // If the current-session process cannot be inspected,
+                    // fail closed and avoid creating a potentially duplicate
+                    // native overlay.
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static SafeFileHandle CreateKillOnCloseJob(Process process)
@@ -466,6 +544,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: false);
+                _ = process.WaitForExit(milliseconds: 2_000);
             }
         }
         catch (InvalidOperationException)

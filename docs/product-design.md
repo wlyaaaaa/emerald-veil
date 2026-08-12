@@ -8,7 +8,8 @@ The active product is a reversible Windows-native Bubbles overlay plus a small n
 2. After 300 seconds of reliable inactivity, it manually starts the installed `%WINDIR%\System32\Bubbles.scr /s` in the signed-in user's current interactive session.
 3. It selects the exact child process window that intersects the primary target display, hides other visible windows from that process, color-keys black pixels, and applies `WS_EX_LAYERED`, `WS_EX_TRANSPARENT`, `WS_EX_NOACTIVATE`, `WS_EX_TOOLWINDOW`, topmost placement, and `SWP_NOACTIVATE`.
 4. The live desktop remains visible. Microsoft still owns the bubble assets, material, animation, collision, and boundary behavior.
-5. Normal input synchronously hides the selected HWND, then closes a `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object. Explicit Disable and watchdog termination use the same ownership boundary, so an old native renderer cannot overlap a new one.
+5. Before launch, a crash-safe cross-process session lease and a read-only current-session process check refuse a second native renderer. They never kill or take over an existing instance.
+6. Normal input synchronously hides the selected HWND, then closes a `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object. Explicit Disable and watchdog termination use the same ownership boundary, so an old native renderer cannot overlap a new one.
 
 Windows' configured automatic screen-saver/lock trigger remains inactive. The application starts `/s` itself only when its own reliable idle clock reaches five minutes; it does not use Windows' foreground `SC_SCREENSAVE` delivery path. The visible output is still a window on the current desktop, not a screenshot, checkerboard, replacement wallpaper, secure desktop, or custom-drawn bubble scene.
 
