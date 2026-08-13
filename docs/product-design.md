@@ -10,6 +10,7 @@ The active product is a reversible Windows-native Bubbles overlay plus a small n
 4. The live desktop remains visible. Microsoft still owns the bubble assets, material, animation, collision, and boundary behavior.
 5. Before launch, a crash-safe cross-process session lease and a read-only current-session process check refuse a second native renderer. They never kill or take over an existing instance.
 6. Normal input synchronously hides the selected HWND, then closes a `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object. Explicit Disable and watchdog termination use the same ownership boundary, so an old native renderer cannot overlap a new one.
+7. While the desired mode remains visible, the watchdog compares that desired state with the owned renderer process every poll. If native Bubbles exits or a launch is temporarily refused, it retries after a one-second backoff; input changes the desired mode to hidden and cancels recovery.
 
 Windows' configured automatic screen-saver/lock trigger remains inactive. The application starts `/s` itself only when its own reliable idle clock reaches five minutes; it does not use Windows' foreground `SC_SCREENSAVE` delivery path. The visible output is still a window on the current desktop, not a screenshot, checkerboard, replacement wallpaper, secure desktop, or custom-drawn bubble scene.
 
@@ -75,6 +76,7 @@ The record is flushed to a same-directory temporary file and atomically moved to
 - The selected HWND exactly matches the target physical rectangle and includes layered, transparent, no-activate, tool-window, and topmost styles.
 - Input hides the selected window within 100 ms and leaves no Bubbles process.
 - Immediate Stop and watchdog process termination both leave zero Bubbles processes, proving Job Object cleanup and no overlap.
+- A deterministic reconciliation test simulates the native renderer exiting while idle, proves no retry occurs before the bounded delay, proves retries continue while it remains absent, and proves input still hides immediately.
 - The real 300-second threshold is observed in the interactive user session.
 - A real remote client verifies connection continuity and the composited image; tool names do not alter runtime behavior.
 - `Disable`, idempotent `Enable`, and exact `Restore` all pass read-back checks.

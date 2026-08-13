@@ -8,11 +8,15 @@ internal sealed class VeilController : IAsyncDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan PreviewDuration = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan RendererRecoveryDelay = TimeSpan.FromSeconds(1);
 
     private readonly VeilWindow _window;
     private readonly IIdleInputSource _inputSource;
     private readonly IdleTimeline _timeline = new();
     private readonly VeilActivationPolicy _policy;
+    private readonly VeilModeReconciler _reconciler = new(
+        RendererRecoveryDelay,
+        Stopwatch.Frequency);
     private readonly CancellationTokenSource _cancellation = new();
     private readonly object _stateLock = new();
 
@@ -21,7 +25,6 @@ internal sealed class VeilController : IAsyncDisposable
     private bool _previewRequested;
     private uint _previewBaselineInputTick;
     private ulong _previewDeadlineTick64;
-    private VeilMode _lastMode = VeilMode.Hidden;
 
     internal VeilController(
         VeilWindow window,
@@ -141,12 +144,13 @@ internal sealed class VeilController : IAsyncDisposable
     {
         lock (_stateLock)
         {
-            if (mode == _lastMode)
+            if (!_reconciler.ShouldApply(
+                    mode,
+                    _window.IsVeilVisible,
+                    Stopwatch.GetTimestamp()))
             {
                 return;
             }
-
-            _lastMode = mode;
         }
 
         if (_window.Dispatcher.CheckAccess())
