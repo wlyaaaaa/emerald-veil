@@ -1,4 +1,5 @@
 using System.Windows;
+using EmeraldVeil.Core;
 
 namespace EmeraldVeil.App;
 
@@ -10,6 +11,7 @@ public partial class App : System.Windows.Application
     private VeilWindow? _veilWindow;
     private VeilController? _controller;
     private TrayIconHost? _trayIcon;
+    private LowLevelInputObserver? _inputObserver;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -43,10 +45,13 @@ public partial class App : System.Windows.Application
         }
 
         var activationDelay = ReadActivationDelay(e.Args);
+        var inputFilter = new InputActivityFilter();
+        _inputObserver = new LowLevelInputObserver(inputFilter);
+        _ = _inputObserver.TryStart();
         _veilWindow = new VeilWindow();
         _controller = new VeilController(
             _veilWindow,
-            new Win32IdleInputSource(),
+            new Win32IdleInputSource(inputFilter),
             activationDelay);
         _trayIcon = new TrayIconHost(_controller, startAtLogin, Shutdown);
         _controller.Start();
@@ -70,6 +75,7 @@ public partial class App : System.Windows.Application
         }
 
         _veilWindow?.Dispose();
+        _inputObserver?.Dispose();
 
         if (_singleton is not null)
         {

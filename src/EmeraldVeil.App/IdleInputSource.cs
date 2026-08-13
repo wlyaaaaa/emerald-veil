@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using EmeraldVeil.Core;
 
 namespace EmeraldVeil.App;
 
@@ -15,6 +16,13 @@ internal interface IIdleInputSource
 
 internal sealed class Win32IdleInputSource : IIdleInputSource
 {
+    private readonly InputActivityFilter _filter;
+
+    internal Win32IdleInputSource(InputActivityFilter filter)
+    {
+        _filter = filter;
+    }
+
     public NativeIdleSample Read()
     {
         var info = new NativeMethods.LastInputInfo
@@ -23,10 +31,14 @@ internal sealed class Win32IdleInputSource : IIdleInputSource
         };
 
         var succeeded = NativeMethods.GetLastInputInfo(ref info);
+        uint effectiveLastInputTick = succeeded
+            ? _filter.Resolve(info.DwTime)
+            : info.DwTime;
+
         return new NativeIdleSample(
             succeeded,
             NativeMethods.GetTickCount(),
             NativeMethods.GetTickCount64(),
-            info.DwTime);
+            effectiveLastInputTick);
     }
 }

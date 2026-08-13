@@ -20,6 +20,8 @@ internal static class NativeMethods
     internal const int WmDpiChanged = 0x02E0;
     internal const int HtTransparent = -1;
     internal const int MaNoActivate = 3;
+    internal const int WhKeyboardLl = 13;
+    internal const int WhMouseLl = 14;
 
     internal const uint SwpNoActivate = 0x0010;
     internal const uint SwpShowWindow = 0x0040;
@@ -44,6 +46,33 @@ internal static class NativeMethods
         internal int Top;
         internal int Right;
         internal int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Point
+    {
+        internal int X;
+        internal int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MouseLowLevelHookData
+    {
+        internal Point Point;
+        internal uint MouseData;
+        internal uint Flags;
+        internal uint Time;
+        internal nuint ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct KeyboardLowLevelHookData
+    {
+        internal uint VirtualKey;
+        internal uint ScanCode;
+        internal uint Flags;
+        internal uint Time;
+        internal nuint ExtraInfo;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -83,6 +112,7 @@ internal static class NativeMethods
     }
 
     internal delegate bool EnumWindowsProc(nint windowHandle, nint parameter);
+    internal delegate nint LowLevelHookProc(int code, nint message, nint dataPointer);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -109,6 +139,31 @@ internal static class NativeMethods
 
     [DllImport("kernel32.dll")]
     internal static extern ulong GetTickCount64();
+
+    [DllImport("kernel32.dll", EntryPoint = "GetModuleHandleW", CharSet = CharSet.Unicode)]
+    internal static extern nint GetModuleHandle(string? moduleName);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowsHookExW", SetLastError = true)]
+    internal static extern nint SetWindowsHookEx(
+        int hookType,
+        LowLevelHookProc callback,
+        nint moduleHandle,
+        uint threadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnhookWindowsHookEx(nint hookHandle);
+
+    [DllImport("user32.dll")]
+    internal static extern nint CallNextHookEx(
+        nint hookHandle,
+        int code,
+        nint message,
+        nint dataPointer);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetPhysicalCursorPos(out Point point);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern nint GetWindowLongPtr64(nint windowHandle, int index);
