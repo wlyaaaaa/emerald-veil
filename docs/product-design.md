@@ -4,12 +4,12 @@
 
 The active product is a reversible Windows-native Bubbles overlay plus a small no-console idle watchdog:
 
-1. The watchdog samples `GetLastInputInfo` every 50 ms. A low-level in-memory classifier compares per-monitor-aware mouse-event points and ignores only an injected `WM_MOUSEMOVE` whose point exactly equals the preceding mouse-event point.
+1. The watchdog samples `GetLastInputInfo` every 50 ms. A low-level in-memory classifier compares per-monitor-aware mouse-event points and ignores only a `WM_MOUSEMOVE` whose point exactly equals the preceding mouse-event point, regardless of the injected flag.
 2. After 300 seconds of reliable inactivity, it manually starts the installed `%WINDIR%\System32\Bubbles.scr /s` in the signed-in user's current interactive session.
 3. It selects the exact child process window that intersects the primary target display, hides other visible windows from that process, color-keys black pixels, and applies `WS_EX_LAYERED`, `WS_EX_TRANSPARENT`, `WS_EX_NOACTIVATE`, `WS_EX_TOOLWINDOW`, topmost placement, and `SWP_NOACTIVATE`.
 4. The live desktop remains visible. Microsoft still owns the bubble assets, material, animation, collision, and boundary behavior.
 5. Before launch, a crash-safe cross-process session lease and a read-only current-session process check refuse a second native renderer. They never kill or take over an existing instance.
-6. Every nonzero move, button, wheel, keyboard, and non-injected event synchronously hides the selected HWND, then closes a `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object. Explicit Disable and watchdog termination use the same ownership boundary, so an old native renderer cannot overlap a new one.
+6. Every nonzero move, button, wheel, and keyboard event synchronously hides the selected HWND, then closes a `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object. Explicit Disable and watchdog termination use the same ownership boundary, so an old native renderer cannot overlap a new one.
 7. While the desired mode remains visible, the watchdog compares that desired state with the owned renderer process every poll. If native Bubbles exits or a launch is temporarily refused, it retries after a one-second backoff; input changes the desired mode to hidden and cancels recovery.
 
 Windows' configured automatic screen-saver/lock trigger remains inactive. The application starts `/s` itself only when its own reliable idle clock reaches five minutes; it does not use Windows' foreground `SC_SCREENSAVE` delivery path. The visible output is still a window on the current desktop, not a screenshot, checkerboard, replacement wallpaper, secure desktop, or custom-drawn bubble scene.
@@ -41,7 +41,7 @@ Runtime setters use active=false, timeout=300, and secure=false. Windows can rec
 
 Remote-control and streaming products are not detectable as a complete, reliable class, so Emerald Veil does not maintain an allowlist or attempt generic remote-session suppression. Compatibility comes from staying on the user's existing interactive desktop, keeping the Windows automatic/secure trigger disabled, color-keying the background, and avoiding capture or display reconfiguration. ToDesk, Sunshine, UU/GameViewer, and future tools all receive the same behavior.
 
-Some remote, streaming, or device-sharing software periodically injects a mouse move without changing the pointer position. Such a no-op must neither reset the five-minute idle clock nor terminate native Bubbles, so the watchdog suppresses that exact event before it reaches the renderer and preserves the previously accepted `GetLastInputInfo` tick. The comparison uses the previous per-monitor-aware event point, not WPF DIPs or display scaling. All other injected input remains activity; in particular, nonzero movement, buttons, wheel events, and keyboard input still dismiss Bubbles. This event-level rule deliberately cannot infer the source program or whether a nonzero synthetic event expresses human intent.
+Remote, streaming, device-sharing, and virtual-HID software can periodically emit a mouse move without changing the pointer position, and not every such event carries the low-level injected flag. Such a no-op must neither reset the five-minute idle clock nor terminate native Bubbles, so the watchdog suppresses that exact event before it reaches the renderer and preserves the previously accepted `GetLastInputInfo` tick. The comparison uses the previous per-monitor-aware event point, not WPF DIPs or display scaling. Every nonzero movement, button, wheel event, and keyboard input still dismisses Bubbles. This event-level rule deliberately cannot infer the source program or whether a nonzero synthetic event expresses human intent.
 
 The classifier keeps only the previous mouse-event point and latest timestamp classification in process memory. It does not retain key values, write activity logs, identify a remote-control product, or persist coordinates. If the narrow hooks cannot be installed, the watchdog falls back to unfiltered `GetLastInputInfo` behavior rather than hiding other input.
 
@@ -79,7 +79,7 @@ The record is flushed to a same-directory temporary file and atomically moved to
 - A bounded visual check observes native maximum-size multicolor bubbles over the live 3840×2160 Codex desktop with no black, grey, checkerboard, or replacement background.
 - The selected HWND exactly matches the target physical rectangle and includes layered, transparent, no-activate, tool-window, and topmost styles.
 - Input hides the selected window within 100 ms and leaves no Bubbles process.
-- A PMv2 acceptance helper injects an exact zero-displacement `WM_MOUSEMOVE`; the same native Bubbles PID remains visible. An injected test key then dismisses it, proving every other input path remains active.
+- Unit tests cover exact zero-displacement `WM_MOUSEMOVE` events both with and without the injected flag. A PMv2 acceptance helper injects an exact zero-displacement move and the same native Bubbles PID remains visible; an injected test key then dismisses it, proving every other input path remains active.
 - Immediate Stop and watchdog process termination both leave zero Bubbles processes, proving Job Object cleanup and no overlap.
 - A deterministic reconciliation test simulates the native renderer exiting while idle, proves no retry occurs before the bounded delay, proves retries continue while it remains absent, and proves input still hides immediately.
 - The real 300-second threshold is observed in the interactive user session.

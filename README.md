@@ -2,7 +2,7 @@
 
 Emerald Veil is a small, reversible Windows-native Bubbles overlay for OLED idle use. After five minutes without meaningful keyboard or mouse input, it shows the copy of `Bubbles.scr` already supplied by Windows. The original Microsoft colors, glass material, size, count policy, and motion stay intact while the live desktop remains visible underneath.
 
-The installed WinExe is a quiet user-session watchdog. It samples `GetLastInputInfo` and uses one narrow in-memory classifier to ignore only an injected `WM_MOUSEMOVE` whose point has not changed at all. It manually starts `Bubbles.scr /s`, finds the exact child process window, turns black background pixels transparent, and makes that window topmost, non-activating, and click-through. Windows' own automatic screen-saver and lock trigger remains disabled. No screenshot, checkerboard, replacement background, custom bubble renderer, network, telemetry, scheduled task, PowerShell wrapper, event log, or product-name allowlist is used.
+The installed WinExe is a quiet user-session watchdog. It samples `GetLastInputInfo` and uses one narrow in-memory classifier to ignore only a `WM_MOUSEMOVE` whose point has not changed at all, regardless of the injected flag. It manually starts `Bubbles.scr /s`, finds the exact child process window, turns black background pixels transparent, and makes that window topmost, non-activating, and click-through. Windows' own automatic screen-saver and lock trigger remains disabled. No screenshot, checkerboard, replacement background, custom bubble renderer, network, telemetry, scheduled task, PowerShell wrapper, event log, or product-name allowlist is used.
 
 Startup is deliberately per-user through a direct `HKCU\...\Run` WinExe entry. It must not run as `SYSTEM`: Session 0 cannot draw on the signed-in user's desktop. A crash-safe, cross-process session lease refuses a second renderer without killing or taking over an existing one. Every owned renderer is also assigned to a kill-on-close Windows Job Object, so input, Disable, watchdog exit, crash, or restart cannot leave an old Bubbles instance to overlap the next one.
 
@@ -12,7 +12,7 @@ Startup is deliberately per-user through a direct `HKCU\...\Run` WinExe entry. I
 - Visual: Microsoft Windows native multicolor glass bubbles in full-size `/s` mode.
 - Size: the native maximum-radius profile; it is not calculated from DPI, Windows scaling, screen inches, or resolution.
 - 4K density: Windows' native default produces roughly 26 large bubbles on a 3840×2160 target instead of thousands of preview-mode miniatures.
-- Exit: every real movement, injected nonzero movement, button, wheel, or keyboard event hides the owned window synchronously and closes its Job Object. Only an injected zero-displacement mouse move is ignored.
+- Exit: every nonzero movement, button, wheel, or keyboard event hides the owned window synchronously and closes its Job Object. Only a zero-displacement mouse move is ignored.
 - Foreground: Codex and other applications remain live and visible under the color-keyed window.
 - Remote use: the overlay stays on the current interactive desktop and does not enter secure desktop or lock state. ToDesk, Sunshine, UU/GameViewer, and similar tools are examples only; the program never detects or branches on their names.
 - OLED protection: motion reduces fully static exposure while idle, but no software screen saver guarantees prevention of burn-in.

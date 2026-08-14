@@ -4,8 +4,10 @@ namespace EmeraldVeil.Core.Tests;
 
 public sealed class InputActivityFilterTests
 {
-    [Fact]
-    public void InjectedZeroDisplacementMouseMoveKeepsLastAcceptedTick()
+    [Theory]
+    [InlineData(InputActivityFilter.InjectedMouseFlag)]
+    [InlineData(0u)]
+    public void ZeroDisplacementMouseMoveKeepsLastAcceptedTick(uint flags)
     {
         var filter = new InputActivityFilter();
         Assert.Equal(100u, filter.Resolve(100));
@@ -14,7 +16,7 @@ public sealed class InputActivityFilterTests
         bool shouldSuppress = filter.ObserveMouse(
             timestamp: 200,
             message: InputActivityFilter.MouseMoveMessage,
-            flags: InputActivityFilter.InjectedMouseFlag,
+            flags,
             x: 640,
             y: 480);
 
@@ -24,7 +26,7 @@ public sealed class InputActivityFilterTests
 
     [Theory]
     [InlineData(InputActivityFilter.MouseMoveMessage, InputActivityFilter.InjectedMouseFlag, 641, 480)]
-    [InlineData(InputActivityFilter.MouseMoveMessage, 0u, 640, 480)]
+    [InlineData(InputActivityFilter.MouseMoveMessage, 0u, 641, 480)]
     [InlineData(0x0201, InputActivityFilter.InjectedMouseFlag, 640, 480)]
     public void EveryOtherMouseInputAdvancesLastAcceptedTick(
         int message,

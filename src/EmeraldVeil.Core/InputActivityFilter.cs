@@ -1,9 +1,9 @@
 namespace EmeraldVeil.Core;
 
 /// <summary>
-/// Keeps one narrowly identified synthetic no-op mouse move from resetting the
-/// product's idle clock. Every other input remains activity. Only the previous
-/// pointer point and latest timestamp classification are retained in memory.
+/// Keeps a zero-displacement mouse move from resetting the product's idle
+/// clock. Every other input remains activity. Only the previous pointer point
+/// and latest timestamp classification are retained in memory.
 /// </summary>
 public sealed class InputActivityFilter
 {
@@ -42,7 +42,6 @@ public sealed class InputActivityFilter
         {
             bool isIgnorable = _hasPointerPosition &&
                 message == MouseMoveMessage &&
-                (flags & InjectedMouseFlag) != 0 &&
                 x == _pointerX &&
                 y == _pointerY;
 

@@ -6,7 +6,7 @@ namespace EmeraldVeil.App;
 
 /// <summary>
 /// Classifies only the latest low-level mouse/keyboard timestamp so the idle
-/// source can distinguish an injected zero-displacement mouse move. Hooks are
+/// source can distinguish a zero-displacement mouse move. Hooks are
 /// observational except for suppressing that exact no-op event. Every other
 /// event is passed to the next hook; no event is logged or persisted.
 /// </summary>
@@ -60,7 +60,7 @@ internal sealed class LowLevelInputObserver : IDisposable
         }
 
         Stop();
-        Debug.WriteLine("Unable to install the narrow injected-input observer.");
+        Debug.WriteLine("Unable to install the narrow zero-movement observer.");
         return false;
     }
 
