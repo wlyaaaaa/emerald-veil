@@ -125,4 +125,45 @@ public sealed class InputActivityFilterTests
         Assert.True(noOp);
         Assert.Equal(200u, filter.Resolve(300));
     }
+
+    [Fact]
+    public void RawTickBeforeIgnoredClassificationDoesNotBecomeAcceptedActivity()
+    {
+        var filter = new InputActivityFilter();
+        Assert.Equal(100u, filter.Resolve(100));
+        filter.InitializePointerPosition(640, 480);
+
+        Assert.Equal(100u, filter.Resolve(200));
+        bool shouldSuppress = filter.ObserveMouse(
+            timestamp: 200,
+            message: InputActivityFilter.MouseMoveMessage,
+            flags: InputActivityFilter.InjectedMouseFlag,
+            x: 640,
+            y: 480);
+
+        Assert.True(shouldSuppress);
+        Assert.Equal(100u, filter.Resolve(200));
+    }
+
+    [Fact]
+    public void UnclassifiedRawTickBecomesActivityOnSecondObservation()
+    {
+        var filter = new InputActivityFilter();
+        Assert.Equal(100u, filter.Resolve(100));
+
+        Assert.Equal(100u, filter.Resolve(200));
+        Assert.Equal(200u, filter.Resolve(200));
+    }
+
+    [Fact]
+    public void AcceptedClassificationCommitsPendingRawTickImmediately()
+    {
+        var filter = new InputActivityFilter();
+        Assert.Equal(100u, filter.Resolve(100));
+
+        Assert.Equal(100u, filter.Resolve(200));
+        filter.ObserveKeyboard(timestamp: 200);
+
+        Assert.Equal(200u, filter.Resolve(200));
+    }
 }
