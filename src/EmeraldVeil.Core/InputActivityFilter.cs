@@ -1,14 +1,16 @@
 namespace EmeraldVeil.Core;
 
 /// <summary>
-/// Keeps a zero-displacement mouse move from resetting the product's idle
-/// clock. Every other input remains activity. Only the previous pointer point
-/// and latest timestamp classification are retained in memory.
+/// Keeps zero-displacement and isolated injected mouse moves from resetting
+/// the product's idle clock. Injected movement is accepted once a second move
+/// confirms a stream. Every event is still passed through except an exact
+/// zero-displacement move.
 /// </summary>
 public sealed class InputActivityFilter
 {
     public const int MouseMoveMessage = 0x0200;
     public const uint InjectedMouseFlag = 0x0000_0001;
+    private const uint InjectedMoveConfirmationWindowMilliseconds = 250;
 
     private readonly object _stateLock = new();
 
@@ -22,6 +24,8 @@ public sealed class InputActivityFilter
     private bool _hasPointerPosition;
     private int _pointerX;
     private int _pointerY;
+    private bool _hasUnconfirmedInjectedMove;
+    private uint _unconfirmedInjectedMoveTimestamp;
 
     public void InitializePointerPosition(int x, int y)
     {
@@ -42,21 +46,48 @@ public sealed class InputActivityFilter
     {
         lock (_stateLock)
         {
-            bool isIgnorable = _hasPointerPosition &&
-                message == MouseMoveMessage &&
+            bool isMouseMove = message == MouseMoveMessage;
+            bool isZeroDisplacement = _hasPointerPosition &&
+                isMouseMove &&
                 x == _pointerX &&
                 y == _pointerY;
+            bool isInjectedMovement = isMouseMove &&
+                !isZeroDisplacement &&
+                (flags & InjectedMouseFlag) != 0;
+            bool isConfirmedInjectedStream = isInjectedMovement &&
+                _hasUnconfirmedInjectedMove &&
+                unchecked(timestamp - _unconfirmedInjectedMoveTimestamp) <=
+                    InjectedMoveConfirmationWindowMilliseconds;
+
+            bool isIgnorableForIdle = isZeroDisplacement ||
+                (isInjectedMovement && !isConfirmedInjectedStream);
+
+            if (isInjectedMovement)
+            {
+                _hasUnconfirmedInjectedMove = true;
+                _unconfirmedInjectedMoveTimestamp = timestamp;
+            }
+            else
+            {
+                _hasUnconfirmedInjectedMove = false;
+            }
 
             _pointerX = x;
             _pointerY = y;
             _hasPointerPosition = true;
-            ObserveClassificationUnsafe(timestamp, isIgnorable);
-            return isIgnorable;
+            ObserveClassificationUnsafe(timestamp, isIgnorableForIdle);
+            return isZeroDisplacement;
         }
     }
 
-    public void ObserveKeyboard(uint timestamp) =>
-        ObserveClassification(timestamp, isIgnorable: false);
+    public void ObserveKeyboard(uint timestamp)
+    {
+        lock (_stateLock)
+        {
+            _hasUnconfirmedInjectedMove = false;
+            ObserveClassificationUnsafe(timestamp, isIgnorable: false);
+        }
+    }
 
     public uint Resolve(uint rawLastInputTick)
     {
@@ -104,14 +135,6 @@ public sealed class InputActivityFilter
             _hasPendingRawTick = false;
             _lastAcceptedTick = rawLastInputTick;
             return rawLastInputTick;
-        }
-    }
-
-    private void ObserveClassification(uint timestamp, bool isIgnorable)
-    {
-        lock (_stateLock)
-        {
-            ObserveClassificationUnsafe(timestamp, isIgnorable);
         }
     }
 
