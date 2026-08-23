@@ -4,11 +4,11 @@ namespace EmeraldVeil.Core.Tests;
 
 public sealed class VeilActivationPolicyTests
 {
-    private static readonly VeilActivationPolicy Policy = new(TimeSpan.FromMinutes(5));
+    private static readonly VeilActivationPolicy Policy = new(TimeSpan.FromMinutes(10));
 
     [Theory]
-    [InlineData(299_999, VeilMode.Hidden)]
-    [InlineData(300_000, VeilMode.Idle)]
+    [InlineData(599_999, VeilMode.Hidden)]
+    [InlineData(600_000, VeilMode.Idle)]
     public void ActivatesAtConfiguredThreshold(int milliseconds, VeilMode expected)
     {
         var result = Policy.Evaluate(

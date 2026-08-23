@@ -129,7 +129,7 @@ public partial class App : System.Windows.Application
             argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
         if (value is null)
         {
-            return TimeSpan.FromMinutes(5);
+            return TimeSpan.FromMinutes(10);
         }
 
         if (!int.TryParse(value[prefix.Length..], out var seconds) || seconds is < 1 or > 86_400)

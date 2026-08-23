@@ -27,7 +27,7 @@ $watchdogEnabledName = 'NativeBubblesEnabled'
 $bubblesExecutable = Join-Path $env:WINDIR 'System32\Bubbles.scr'
 $expectedLegacyCommand = '"{0}"' -f ([IO.Path]::GetFullPath($LegacyExecutable))
 $radiusDword = [uint32]1130000000
-$timeoutSeconds = [uint32]300
+$timeoutSeconds = [uint32]600
 $utf8NoBom = [Text.UTF8Encoding]::new($false)
 
 # The PowerShell Registry provider treats `New-Item -Force` on an existing key
@@ -533,7 +533,7 @@ function Get-NativeBubblesStatus {
         $problems.Add('SCRNSAVE.EXE does not point to the native Bubbles screen saver.')
     }
     if ($timeout -ne [string]$timeoutSeconds -or $timeoutRuntime -ne $timeoutSeconds) {
-        $problems.Add('Screen saver timeout is not 300 seconds in both registry and runtime state.')
+        $problems.Add("Screen saver timeout is not $timeoutSeconds seconds in both registry and runtime state.")
     }
     if (-not $timeoutEntry.exists -or $timeoutEntry.kind -ne 'String') {
         $problems.Add('ScreenSaveTimeOut is not present as REG_SZ.')
