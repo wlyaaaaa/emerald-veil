@@ -10,6 +10,7 @@ public sealed class VeilModeReconciler
     private readonly long _retryDelayTicks;
 
     private VeilMode _lastMode = VeilMode.Hidden;
+    private bool _rendererWasRunning;
     private long _nextRetryTimestamp;
 
     public VeilModeReconciler(TimeSpan retryDelay, long timestampFrequency)
@@ -32,12 +33,27 @@ public sealed class VeilModeReconciler
         if (desiredMode != _lastMode)
         {
             _lastMode = desiredMode;
+            _rendererWasRunning = desiredMode != VeilMode.Hidden && rendererRunning;
             ScheduleNextRetry(desiredMode, timestamp);
             return true;
         }
 
-        if (desiredMode == VeilMode.Hidden || rendererRunning)
+        if (desiredMode == VeilMode.Hidden)
         {
+            _rendererWasRunning = false;
+            return false;
+        }
+
+        if (rendererRunning)
+        {
+            _rendererWasRunning = true;
+            return false;
+        }
+
+        if (_rendererWasRunning)
+        {
+            _rendererWasRunning = false;
+            _nextRetryTimestamp = checked(timestamp + _retryDelayTicks);
             return false;
         }
 
