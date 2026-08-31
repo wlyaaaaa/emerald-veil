@@ -67,6 +67,21 @@ internal sealed class NativeBubblesLauncher : IDisposable
         }
     }
 
+    internal bool TryGetWindowHandle(out nint windowHandle)
+    {
+        lock (_stateLock)
+        {
+            if (_process is null || HasExited(_process) || _windowHandle == nint.Zero)
+            {
+                windowHandle = nint.Zero;
+                return false;
+            }
+
+            windowHandle = _windowHandle;
+            return true;
+        }
+    }
+
     internal bool Start(Rectangle physicalBounds)
     {
         ThrowIfDisposed();

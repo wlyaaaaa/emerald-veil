@@ -3,14 +3,19 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 
 namespace EmeraldVeil.App;
 
 internal sealed class VeilWindow : Window, IDisposable
 {
+    private static readonly TimeSpan LayerMaintenanceInterval =
+        TimeSpan.FromMilliseconds(100);
+
     private readonly VeilSurface _surface = new();
     private readonly NativeBubblesLauncher _nativeBubbles = new();
+    private readonly DispatcherTimer _layerMaintenanceTimer;
     private readonly nint _windowHandle;
     private readonly HwndSource _windowSource;
     private bool _allowClose;
@@ -44,6 +49,13 @@ internal sealed class VeilWindow : Window, IDisposable
             ?? throw new InvalidOperationException("Unable to attach to the veil window handle.");
         _windowSource.AddHook(WindowMessageHook);
         ApplyExtendedWindowStyles();
+
+        _layerMaintenanceTimer = new DispatcherTimer(
+            LayerMaintenanceInterval,
+            DispatcherPriority.Send,
+            (_, _) => MaintainBackgroundPlacement(),
+            Dispatcher);
+        _layerMaintenanceTimer.Stop();
     }
 
     internal bool IsVeilVisible => _nativeBubbles.IsRunning;
@@ -112,6 +124,7 @@ internal sealed class VeilWindow : Window, IDisposable
         }
 
         _disposed = true;
+        _layerMaintenanceTimer.Stop();
         _nativeBubbles.Dispose();
         _surface.StopAnimation();
         _windowSource.RemoveHook(WindowMessageHook);
@@ -177,16 +190,40 @@ internal sealed class VeilWindow : Window, IDisposable
         }
 
         _surface.StartAnimation();
+        _layerMaintenanceTimer.Start();
+        MaintainBackgroundPlacement();
     }
 
     private void HideBackground()
     {
+        _layerMaintenanceTimer.Stop();
         Opacity = 0;
         _surface.StopAnimation();
         if (IsVisible)
         {
             Hide();
         }
+    }
+
+    private void MaintainBackgroundPlacement()
+    {
+        if (_disposed || !IsVisible)
+        {
+            return;
+        }
+
+        var targetBounds = GetTargetBounds();
+        nint insertAfter = _nativeBubbles.TryGetWindowHandle(out var bubblesWindow)
+            ? bubblesWindow
+            : NativeMethods.HwndTopmost;
+        _ = NativeMethods.SetWindowPos(
+            _windowHandle,
+            insertAfter,
+            targetBounds.Left,
+            targetBounds.Top,
+            targetBounds.Width,
+            targetBounds.Height,
+            NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow);
     }
 
     private nint WindowMessageHook(
