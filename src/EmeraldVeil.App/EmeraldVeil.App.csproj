@@ -4,6 +4,11 @@
     <ProjectReference Include="..\EmeraldVeil.Core\EmeraldVeil.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Resource Include="..\..\assets\emerald-veil-background.jpg"
+              Link="Assets\emerald-veil-background.jpg" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>

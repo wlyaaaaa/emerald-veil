@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -20,8 +21,13 @@ internal sealed class VeilWindow : Window, IDisposable
         Title = "Emerald Veil";
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
-        AllowsTransparency = true;
-        Background = System.Windows.Media.Brushes.Transparent;
+        // The background must contribute real pixels above any wallpaper
+        // compositor. A transparent WPF window can remain present in the
+        // desktop z-order while contributing no visible surface at all.
+        // Keep input pass-through in the native hook below, but use an opaque
+        // window so the embedded image is the actual visual background.
+        AllowsTransparency = false;
+        Background = System.Windows.Media.Brushes.Black;
         Topmost = true;
         ShowActivated = false;
         ShowInTaskbar = false;
@@ -54,7 +60,20 @@ internal sealed class VeilWindow : Window, IDisposable
         }
 
         var targetBounds = GetTargetBounds();
-        _nativeBubbles.Start(targetBounds);
+        ShowBackground(targetBounds);
+        try
+        {
+            var started = _nativeBubbles.Start(targetBounds);
+            if (!started && !_nativeBubbles.IsRunning)
+            {
+                HideBackground();
+            }
+        }
+        catch
+        {
+            HideBackground();
+            throw;
+        }
     }
 
     internal void HideVeil()
@@ -65,12 +84,7 @@ internal sealed class VeilWindow : Window, IDisposable
         }
 
         _nativeBubbles.Stop();
-        if (IsVisible)
-        {
-            Opacity = 0;
-            _surface.StopAnimation();
-            Hide();
-        }
+        HideBackground();
     }
 
     internal NativeMethods.Rect ReadPhysicalBounds()
@@ -121,7 +135,6 @@ internal sealed class VeilWindow : Window, IDisposable
     {
         var current = NativeMethods.GetWindowLongPtr(_windowHandle, NativeMethods.GwlExStyle).ToInt64();
         var updated = current
-            | NativeMethods.WsExLayered
             | NativeMethods.WsExTransparent
             | NativeMethods.WsExNoActivate
             | NativeMethods.WsExToolWindow;
@@ -133,6 +146,47 @@ internal sealed class VeilWindow : Window, IDisposable
         var target = Forms.Screen.PrimaryScreen
             ?? throw new InvalidOperationException("No primary display is available.");
         return target.Bounds;
+    }
+
+    private void ShowBackground(System.Drawing.Rectangle physicalBounds)
+    {
+        var dpi = VisualTreeHelper.GetDpi(this);
+        Width = physicalBounds.Width / dpi.DpiScaleX;
+        Height = physicalBounds.Height / dpi.DpiScaleY;
+        Left = physicalBounds.Left / dpi.DpiScaleX;
+        Top = physicalBounds.Top / dpi.DpiScaleY;
+        Opacity = 1;
+
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        if (!NativeMethods.SetWindowPos(
+                _windowHandle,
+                NativeMethods.HwndTopmost,
+                physicalBounds.Left,
+                physicalBounds.Top,
+                physicalBounds.Width,
+                physicalBounds.Height,
+                NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastPInvokeError(),
+                "Unable to place the Emerald Veil background layer.");
+        }
+
+        _surface.StartAnimation();
+    }
+
+    private void HideBackground()
+    {
+        Opacity = 0;
+        _surface.StopAnimation();
+        if (IsVisible)
+        {
+            Hide();
+        }
     }
 
     private nint WindowMessageHook(
@@ -156,7 +210,12 @@ internal sealed class VeilWindow : Window, IDisposable
             case NativeMethods.WmDpiChanged:
                 if (IsVeilVisible)
                 {
-                    _ = Dispatcher.BeginInvoke(() => _nativeBubbles.Restart(GetTargetBounds()));
+                    _ = Dispatcher.BeginInvoke(() =>
+                    {
+                        var targetBounds = GetTargetBounds();
+                        ShowBackground(targetBounds);
+                        _nativeBubbles.Restart(targetBounds);
+                    });
                 }
 
                 break;

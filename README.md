@@ -1,8 +1,8 @@
 # Emerald Veil
 
-Emerald Veil is a small, reversible Windows-native Bubbles overlay for OLED idle use. After six minutes without meaningful keyboard or mouse input, it shows the copy of `Bubbles.scr` already supplied by Windows. The original Microsoft colors, glass material, size, count policy, and motion stay intact while the live desktop remains visible underneath.
+Emerald Veil is a small, reversible Windows-native Bubbles overlay for OLED idle use. After six minutes without meaningful keyboard or mouse input, it shows the copy of `Bubbles.scr` already supplied by Windows above the selected project background. The original Microsoft colors, glass material, size, count policy, and motion stay intact.
 
-The selected desktop background is the project-owned `assets/emerald-veil-background.jpg` (3840×2160). It is an ordinary Windows wallpaper beneath the transparent overlay; the watchdog does not capture or replace the live desktop.
+The selected background is the project-owned `assets/emerald-veil-background.jpg` (3840×2160), embedded in the installed watchdog and rendered as a full-size click-through layer beneath native Bubbles. The watchdog does not capture the desktop or depend on the Windows/Wallpaper Engine wallpaper owner.
 
 The installed WinExe is a quiet user-session watchdog. It samples `GetLastInputInfo` and uses one narrow in-memory classifier to ignore a `WM_MOUSEMOVE` whose point has not changed at all. It also keeps one isolated injected nonzero move from resetting the idle clock; the event is still delivered normally, and a second injected move within 250 ms confirms real remote movement and becomes activity. A new raw input tick without a matching hook classification is held for one 50 ms sample so a no-op classification arriving just behind the poll cannot become permanent activity; an unclassified or valid tick is accepted on the next sample. The watchdog manually starts `Bubbles.scr /s`, finds the exact child process window, turns black background pixels transparent, and makes that window topmost, non-activating, and click-through. Windows' own automatic screen-saver and lock trigger remains disabled. No screenshot, checkerboard, replacement background, custom bubble renderer, network, telemetry, scheduled task, PowerShell wrapper, event log, or product-name allowlist is used.
 
@@ -15,7 +15,7 @@ Startup is deliberately per-user through a direct `HKCU\...\Run` WinExe entry. I
 - Size: the native maximum-radius profile; it is not calculated from DPI, Windows scaling, screen inches, or resolution.
 - 4K density: Windows' native default produces roughly 26 large bubbles on a 3840×2160 target instead of thousands of preview-mode miniatures.
 - Exit: physical movement, a confirmed injected movement stream, a button, wheel, or keyboard event hides the owned window synchronously and closes its Job Object. An exact zero-displacement move and one isolated injected reposition do not dismiss it.
-- Foreground: Codex and other applications remain live and visible under the color-keyed window.
+- Foreground: Codex and other applications remain live and receive normal input; while the veil is active, the selected background image covers the desktop visually beneath the bubbles.
 - Remote use: the overlay stays on the current interactive desktop and does not enter secure desktop or lock state. ToDesk, Sunshine, UU/GameViewer, and similar tools are examples only; the program never detects or branches on their names.
 - OLED protection: motion reduces fully static exposure while idle, but no software screen saver guarantees prevention of burn-in.
 
