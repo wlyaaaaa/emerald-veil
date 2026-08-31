@@ -14,6 +14,8 @@ The active product is a reversible Windows-native Bubbles overlay plus a small n
 
 Windows' configured automatic screen-saver/lock trigger remains inactive. The application starts `/s` itself only when its own reliable idle clock reaches six minutes; it does not use Windows' foreground `SC_SCREENSAVE` delivery path. The visible output is still a window on the current desktop, not a screenshot, checkerboard, replacement wallpaper, secure desktop, or custom-drawn bubble scene.
 
+The current desktop wallpaper selection is the project-owned `assets/emerald-veil-background.jpg` (3840×2160). This is a normal user wallpaper underneath the transparent live-desktop overlay and is not loaded into or copied by the Bubbles renderer.
+
 ## Size and display policy
 
 The product does not derive bubble size from screen inches, resolution, WPF device-independent pixels, or Windows scale percentage. The registry bit pattern `1130000000` represents approximately `218.43`; this Windows build clamps the native `/s` radius to its internal maximum of 200, giving a nominal 400-physical-pixel diameter. Changing Windows scaling among 150%, 175%, and 200% therefore does not resize the bubbles.
