@@ -27,7 +27,7 @@ $watchdogEnabledName = 'NativeBubblesEnabled'
 $bubblesExecutable = Join-Path $env:WINDIR 'System32\Bubbles.scr'
 $expectedLegacyCommand = '"{0}"' -f ([IO.Path]::GetFullPath($LegacyExecutable))
 $radiusDword = [uint32]1130000000
-$timeoutSeconds = [uint32]600
+$timeoutSeconds = [uint32]360
 $utf8NoBom = [Text.UTF8Encoding]::new($false)
 
 # The PowerShell Registry provider treats `New-Item -Force` on an existing key
