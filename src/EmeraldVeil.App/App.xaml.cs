@@ -34,7 +34,7 @@ public partial class App : System.Windows.Application
         // contract before starting the watchdog.
         if (NativeBubblesSettings.IsEnabled())
         {
-            NativeMethods.SetScreenSaverActive(active: false);
+            _ = NativeBubblesSettings.EnsureRuntimePolicy();
         }
 
         _singleton = new Mutex(initiallyOwned: true, SingletonName, out var isFirstInstance);

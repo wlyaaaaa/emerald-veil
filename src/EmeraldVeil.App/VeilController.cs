@@ -9,6 +9,8 @@ internal sealed class VeilController : IAsyncDisposable
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan PreviewDuration = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan RendererRecoveryDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan RuntimePolicyMaintenanceInterval =
+        TimeSpan.FromSeconds(30);
 
     private readonly VeilWindow _window;
     private readonly IIdleInputSource _inputSource;
@@ -25,6 +27,8 @@ internal sealed class VeilController : IAsyncDisposable
     private bool _previewRequested;
     private uint _previewBaselineInputTick;
     private ulong _previewDeadlineTick64;
+    private bool _previewDismissOnInput;
+    private ulong _nextRuntimePolicyCheckTick64;
 
     internal VeilController(
         VeilWindow window,
@@ -34,6 +38,9 @@ internal sealed class VeilController : IAsyncDisposable
         _window = window;
         _inputSource = inputSource;
         _policy = new VeilActivationPolicy(activationDelay);
+        _nextRuntimePolicyCheckTick64 =
+            NativeMethods.GetTickCount64() +
+            (ulong)RuntimePolicyMaintenanceInterval.TotalMilliseconds;
     }
 
     internal bool IsPaused
@@ -69,20 +76,23 @@ internal sealed class VeilController : IAsyncDisposable
 
     internal void RequestPreview()
     {
-        RequestExplicitDisplay(PreviewDuration);
+        RequestExplicitDisplay(PreviewDuration, dismissOnInput: false);
     }
 
     internal void RequestImmediateDisplay()
     {
-        RequestExplicitDisplay(timeout: null);
+        RequestExplicitDisplay(timeout: null, dismissOnInput: true);
     }
 
-    private void RequestExplicitDisplay(TimeSpan? timeout)
+    private void RequestExplicitDisplay(
+        TimeSpan? timeout,
+        bool dismissOnInput)
     {
         var sample = _inputSource.Read();
         lock (_stateLock)
         {
             _previewRequested = true;
+            _previewDismissOnInput = dismissOnInput;
             _previewBaselineInputTick = sample.LastInputTick32;
             _previewDeadlineTick64 = timeout is null
                 ? ulong.MaxValue
@@ -120,13 +130,15 @@ internal sealed class VeilController : IAsyncDisposable
                 sample.CurrentTick32,
                 sample.CurrentTick64,
                 sample.LastInputTick32);
+            MaintainRuntimePolicy(sample.CurrentTick64);
 
             bool paused;
             bool preview;
             lock (_stateLock)
             {
                 if (_previewRequested &&
-                    (sample.LastInputTick32 != _previewBaselineInputTick ||
+                    ((_previewDismissOnInput &&
+                      sample.LastInputTick32 != _previewBaselineInputTick) ||
                      sample.CurrentTick64 >= _previewDeadlineTick64))
                 {
                     _previewRequested = false;
@@ -137,6 +149,26 @@ internal sealed class VeilController : IAsyncDisposable
             }
 
             QueueMode(_policy.Evaluate(observation, paused, preview));
+        }
+    }
+
+    private void MaintainRuntimePolicy(ulong currentTick64)
+    {
+        if (currentTick64 < _nextRuntimePolicyCheckTick64)
+        {
+            return;
+        }
+
+        _nextRuntimePolicyCheckTick64 =
+            currentTick64 +
+            (ulong)RuntimePolicyMaintenanceInterval.TotalMilliseconds;
+        try
+        {
+            _ = NativeBubblesSettings.EnsureRuntimePolicy();
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Unable to maintain native screen-saver policy: {exception}");
         }
     }
 

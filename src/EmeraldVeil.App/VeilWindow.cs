@@ -12,6 +12,10 @@ internal sealed class VeilWindow : Window, IDisposable
 {
     private static readonly TimeSpan LayerMaintenanceInterval =
         TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan NativeWindowReadyTimeout =
+        TimeSpan.FromMilliseconds(2250);
+    private static readonly TimeSpan WallpaperStopSettleDelay =
+        TimeSpan.FromSeconds(2);
 
     private readonly VeilSurface _surface = new();
     private readonly NativeBubblesLauncher _nativeBubbles = new();
@@ -20,6 +24,8 @@ internal sealed class VeilWindow : Window, IDisposable
     private readonly HwndSource _windowSource;
     private bool _allowClose;
     private bool _disposed;
+    private bool _launchInProgress;
+    private CancellationTokenSource? _launchCancellation;
 
     internal VeilWindow()
     {
@@ -71,20 +77,84 @@ internal sealed class VeilWindow : Window, IDisposable
             return;
         }
 
-        var targetBounds = GetTargetBounds();
-        ShowBackground(targetBounds);
+        if (_nativeBubbles.IsRunning || _launchInProgress)
+        {
+            return;
+        }
+
+        _launchInProgress = true;
+        _launchCancellation = new CancellationTokenSource();
+        _ = ShowVeilAsync(_launchCancellation);
+    }
+
+    private async Task ShowVeilAsync(CancellationTokenSource launchCancellation)
+    {
+        WallpaperEngineQuiescence? wallpaper = null;
         try
         {
+            wallpaper = WallpaperEngineQuiescence.PauseIfRunning();
+            if (wallpaper is not null)
+            {
+                await Task.Delay(
+                    WallpaperStopSettleDelay,
+                    launchCancellation.Token);
+            }
+
+            launchCancellation.Token.ThrowIfCancellationRequested();
+            var targetBounds = GetTargetBounds();
+            ShowBackground(targetBounds);
+            WaitForBackgroundComposition();
             var started = _nativeBubbles.Start(targetBounds);
             if (!started && !_nativeBubbles.IsRunning)
             {
                 HideBackground();
             }
+            else if (started && !await Task.Run(
+                () => _nativeBubbles.WaitForWindowReady(NativeWindowReadyTimeout),
+                launchCancellation.Token))
+            {
+                throw new TimeoutException(
+                    "Native Bubbles did not establish its overlay window before Wallpaper resumed.");
+            }
         }
-        catch
+        catch (OperationCanceledException) when (launchCancellation.IsCancellationRequested)
         {
             HideBackground();
-            throw;
+        }
+        catch (Exception)
+        {
+            HideBackground();
+        }
+        finally
+        {
+            try
+            {
+                wallpaper?.Dispose();
+            }
+            catch (Exception)
+            {
+                HideBackground();
+            }
+            if (ReferenceEquals(_launchCancellation, launchCancellation))
+            {
+                _launchCancellation = null;
+            }
+
+            launchCancellation.Dispose();
+            _launchInProgress = false;
+        }
+    }
+
+    private void WaitForBackgroundComposition()
+    {
+        _surface.UpdateLayout();
+        Dispatcher.Invoke(
+            static () => { },
+            DispatcherPriority.Render);
+        int result = NativeMethods.DwmFlush();
+        if (result < 0)
+        {
+            Marshal.ThrowExceptionForHR(result);
         }
     }
 
@@ -95,6 +165,7 @@ internal sealed class VeilWindow : Window, IDisposable
             return;
         }
 
+        _launchCancellation?.Cancel();
         _nativeBubbles.Stop();
         HideBackground();
     }
@@ -124,6 +195,7 @@ internal sealed class VeilWindow : Window, IDisposable
         }
 
         _disposed = true;
+        _launchCancellation?.Cancel();
         _layerMaintenanceTimer.Stop();
         _nativeBubbles.Dispose();
         _surface.StopAnimation();
@@ -249,9 +321,7 @@ internal sealed class VeilWindow : Window, IDisposable
                 {
                     _ = Dispatcher.BeginInvoke(() =>
                     {
-                        var targetBounds = GetTargetBounds();
-                        ShowBackground(targetBounds);
-                        _nativeBubbles.Restart(targetBounds);
+                        HideVeil();
                     });
                 }
 

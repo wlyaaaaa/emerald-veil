@@ -7,6 +7,10 @@ internal static class NativeMethods
 {
     internal const uint SpiGetScreenSaveActive = 0x0010;
     internal const uint SpiSetScreenSaveActive = 0x0011;
+    internal const uint SpiGetScreenSaveTimeout = 0x000E;
+    internal const uint SpiSetScreenSaveTimeout = 0x000F;
+    internal const uint SpiGetScreenSaveSecure = 0x0076;
+    internal const uint SpiSetScreenSaveSecure = 0x0077;
     internal const int GwlExStyle = -20;
     internal const long WsExTransparent = 0x0000_0020L;
     internal const long WsExToolWindow = 0x0000_0080L;
@@ -221,6 +225,9 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool DestroyIcon(nint iconHandle);
 
+    [DllImport("dwmapi.dll")]
+    internal static extern int DwmFlush();
+
     [DllImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true)]
     internal static extern SafeFileHandle CreateJobObject(
         nint securityAttributes,
@@ -256,6 +263,28 @@ internal static class NativeMethods
         return value != 0;
     }
 
+    internal static uint GetScreenSaverTimeout()
+    {
+        uint value = 0;
+        if (!SystemParametersInfoGet(SpiGetScreenSaveTimeout, 0, ref value, 0))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        return value;
+    }
+
+    internal static bool GetScreenSaverSecure()
+    {
+        uint value = 0;
+        if (!SystemParametersInfoGet(SpiGetScreenSaveSecure, 0, ref value, 0))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        return value != 0;
+    }
+
     internal static void SetScreenSaverActive(bool active)
     {
         if (!SystemParametersInfoSet(
@@ -263,6 +292,24 @@ internal static class NativeMethods
                 active ? 1u : 0u,
                 nint.Zero,
                 flags: 0))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+    }
+
+    internal static void SetScreenSaverRuntimePolicy(
+        uint timeoutSeconds,
+        bool secure,
+        bool active)
+    {
+        SetScreenSaverValue(SpiSetScreenSaveTimeout, timeoutSeconds);
+        SetScreenSaverValue(SpiSetScreenSaveSecure, secure ? 1u : 0u);
+        SetScreenSaverValue(SpiSetScreenSaveActive, active ? 1u : 0u);
+    }
+
+    private static void SetScreenSaverValue(uint action, uint value)
+    {
+        if (!SystemParametersInfoSet(action, value, nint.Zero, flags: 0))
         {
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
         }

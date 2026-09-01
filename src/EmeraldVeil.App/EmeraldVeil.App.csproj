@@ -24,7 +24,7 @@
     <!-- The installer deploys one executable. Embed WPF's native runtime files
          so the installed watchdog does not depend on publish-directory DLLs. -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <Version>0.1.16</Version>
+    <Version>0.1.24</Version>
   </PropertyGroup>
 
 </Project>

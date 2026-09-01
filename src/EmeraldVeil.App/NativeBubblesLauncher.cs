@@ -169,6 +169,27 @@ internal sealed class NativeBubblesLauncher : IDisposable
         _ = Start(physicalBounds);
     }
 
+    internal bool WaitForWindowReady(TimeSpan timeout)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (deadline.Elapsed < timeout)
+        {
+            if (TryGetWindowHandle(out _))
+            {
+                return true;
+            }
+
+            if (!IsRunning)
+            {
+                return false;
+            }
+
+            Thread.Sleep(InitializationPollInterval);
+        }
+
+        return TryGetWindowHandle(out _);
+    }
+
     internal void Stop()
     {
         Process? process;
@@ -239,6 +260,8 @@ internal sealed class NativeBubblesLauncher : IDisposable
     {
         var initialization = Stopwatch.StartNew();
         bool initialized = false;
+        nint initializedWindowHandle = nint.Zero;
+        int maintenanceFailures = 0;
         try
         {
             while (!cancellationToken.IsCancellationRequested && !HasExited(process))
@@ -248,6 +271,21 @@ internal sealed class NativeBubblesLauncher : IDisposable
                     Task.Delay(MaintenancePollInterval, cancellationToken)
                         .GetAwaiter()
                         .GetResult();
+                    if (!ApplyOverlayContract(
+                            initializedWindowHandle,
+                            physicalBounds))
+                    {
+                        maintenanceFailures++;
+                        if (maintenanceFailures >= 8)
+                        {
+                            throw new InvalidOperationException(
+                                "The native Bubbles window could not recover its overlay contract within two seconds.");
+                        }
+                    }
+                    else
+                    {
+                        maintenanceFailures = 0;
+                    }
                     continue;
                 }
 
@@ -263,6 +301,8 @@ internal sealed class NativeBubblesLauncher : IDisposable
                     }
 
                     initialized = true;
+                    initializedWindowHandle = selected.Value.Handle;
+                    maintenanceFailures = 0;
                     lock (_stateLock)
                     {
                         if (ReferenceEquals(_process, process))
