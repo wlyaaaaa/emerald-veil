@@ -52,6 +52,20 @@ The classifier keeps only the previous mouse-event point plus minimal injected-s
 
 The background layer and native bubbles are composited in the current interactive desktop without screen capture. A real remote client remains the authority for end-to-end connection and image acceptance; process/service presence alone is not such proof.
 
+An explicit external blackout can temporarily take precedence by holding an open
+session-local named mutex handle named `Local\EmeraldVeil.ExternalProtectionPause`.
+The client creates it with `initiallyOwned: false` before showing its blackout and
+disposes the handle after removing that blackout. This is a lifetime marker, not
+a mutex lock: no wait or `ReleaseMutex` is required. The existing 50 ms monitor
+suppresses both idle activation and explicit preview while any client holds the
+marker, and the UI dispatcher rechecks it before applying a queued visible mode.
+An already-visible owned renderer is hidden through the existing stop path.
+Observers immediately close their probe handles; closing or crashing the last
+protecting client removes the marker automatically. Normal configured idle and
+manual-pause behavior then resumes. This does not change the configured timeout,
+enabled flag, Windows screen-saver settings, startup entry, or desktop topology.
+No remote-product detection, additional helper, file, service, or task is added.
+
 `WS_EX_TRANSPARENT` and `WS_EX_NOACTIVATE` keep the overlay from becoming an application input surface. Regardless of native exit timing, the watchdog's first observed input synchronously hides the owned HWND before process teardown.
 
 ## Reversibility

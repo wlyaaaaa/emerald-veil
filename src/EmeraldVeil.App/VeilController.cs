@@ -148,7 +148,8 @@ internal sealed class VeilController : IAsyncDisposable
                 preview = _previewRequested;
             }
 
-            QueueMode(_policy.Evaluate(observation, paused, preview));
+            QueueMode(_policy.Evaluate(
+                observation, paused, preview, ExternalProtectionPause.IsActive()));
         }
     }
 
@@ -200,6 +201,13 @@ internal sealed class VeilController : IAsyncDisposable
     {
         try
         {
+            // A blackout can begin after a visible mode was queued. Recheck
+            // on the UI thread before creating any background or renderer.
+            if (mode != VeilMode.Hidden && ExternalProtectionPause.IsActive())
+            {
+                mode = VeilMode.Hidden;
+            }
+
             if (mode == VeilMode.Hidden)
             {
                 _window.HideVeil();

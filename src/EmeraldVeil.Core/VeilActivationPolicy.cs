@@ -26,8 +26,14 @@ public sealed class VeilActivationPolicy
     public VeilMode Evaluate(
         IdleObservation observation,
         bool isPaused,
-        bool previewRequested)
+        bool previewRequested,
+        bool externalProtectionActive = false)
     {
+        if (externalProtectionActive)
+        {
+            return VeilMode.Hidden;
+        }
+
         if (previewRequested)
         {
             return VeilMode.Preview;

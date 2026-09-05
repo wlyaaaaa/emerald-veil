@@ -51,4 +51,19 @@ public sealed class VeilActivationPolicyTests
 
         Assert.Equal(VeilMode.Preview, result);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExternalBlackoutSuppressesIdleAndExplicitPreview(bool preview)
+    {
+        var observation = new IdleObservation(true, TimeSpan.FromHours(8));
+
+        Assert.Equal(VeilMode.Hidden, Policy.Evaluate(
+            observation, isPaused: false, previewRequested: preview,
+            externalProtectionActive: true));
+        Assert.Equal(preview ? VeilMode.Preview : VeilMode.Idle, Policy.Evaluate(
+            observation, isPaused: false, previewRequested: preview,
+            externalProtectionActive: false));
+    }
 }
