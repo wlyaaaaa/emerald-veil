@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>青雨 · 让原画醒来</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main id="stage" aria-label="青绿色雨林互动作品">
+    <img id="reference" src="../../assets/emerald-veil-background.jpg" alt="原画：青绿色雨林、苔石和右上角探头的黑猫">
+    <canvas id="scene" aria-label="动态雨林；长按画面可以暂时停住雨幕"></canvas>
+    <div id="hold-glow" aria-hidden="true"></div>
+  </main>
+  <header class="masthead">
+    <div class="edition"><span class="seed"></span> 原画实验 · 第一幕</div>
+    <h1>青雨</h1>
+    <p>让原画醒来。</p>
+  </header>
+  <div class="view-info"><span id="display-info">准备画面</span><span id="motion-info">雨在落下</span></div>
+  <section id="tuning" hidden aria-label="调整画面">
+    <div class="panel-title"><span>调一场自己的雨</span><button id="close-tuning" class="icon-button" aria-label="关闭调整">×</button></div>
+    <label>绿色鲜度 <output id="vivid-value">65%</output><input id="vivid" type="range" min="0" max="1.4" step="0.01" value="0.65"></label>
+    <label>雨的密度 <output id="rain-value">75%</output><input id="rain" type="range" min="0" max="1.5" step="0.01" value="0.75"></label>
+    <label>风的力度 <output id="wind-value">35%</output><input id="wind" type="range" min="0" max="1" step="0.01" value="0.35"></label>
+    <label>林间薄雾 <output id="haze-value">30%</output><input id="haze" type="range" min="0" max="1" step="0.01" value="0.3"></label>
+    <label>空间微动 <output id="depth-value">45%</output><input id="depth" type="range" min="0" max="1" step="0.01" value="0.45"></label>
+    <div class="panel-foot"><button id="reset" class="text-button">恢复这一幕</button><button id="export" class="text-button">保存 4K 静帧</button></div>
+    <details><summary>画面信息</summary><pre id="diagnostics">正在读取显示能力。</pre></details>
+  </section>
+  <footer class="controls">
+    <p id="hint">长按画面，停住这一场雨。</p>
+    <nav aria-label="作品控制">
+      <button id="pause" aria-pressed="false"><span class="button-icon" aria-hidden="true">Ⅱ</span><span id="pause-label">停住雨幕</span></button>
+      <button id="compare" aria-pressed="false"><span class="button-icon" aria-hidden="true">◧</span><span id="compare-label">原图对照</span></button>
+      <span class="divider"></span>
+      <button id="adjust" aria-expanded="false"><span class="button-icon" aria-hidden="true">☷</span>调整</button>
+      <button id="fullscreen"><span class="button-icon" aria-hidden="true">⛶</span>全屏欣赏</button>
+    </nav>
+  </footer>
+  <div id="message" role="status" hidden></div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
