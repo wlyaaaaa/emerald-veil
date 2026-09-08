@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>青雨 · 让原画醒来</title>
+  <title>青雨 · 第二幕 · 雨入画</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -14,9 +14,9 @@
     <div id="hold-glow" aria-hidden="true"></div>
   </main>
   <header class="masthead">
-    <div class="edition"><span class="seed"></span> 原画实验 · 第一幕</div>
+    <div class="edition"><span class="seed"></span><span id="edition-label">原画实验 · 第二幕</span></div>
     <h1>青雨</h1>
-    <p>让原画醒来。</p>
+    <p id="edition-caption">让雨落进画里。</p>
   </header>
   <div class="view-info"><span id="display-info">准备画面</span><span id="motion-info">雨在落下</span></div>
   <section id="tuning" hidden aria-label="调整画面">
@@ -30,9 +30,10 @@
     <details><summary>画面信息</summary><pre id="diagnostics">正在读取显示能力。</pre></details>
   </section>
   <footer class="controls">
-    <p id="hint">长按画面，停住这一场雨。</p>
+    <p id="hint">停住雨幕，再切换上一版，看同一瞬间的变化。</p>
     <nav aria-label="作品控制">
       <button id="pause" aria-pressed="false"><span class="button-icon" aria-hidden="true">Ⅱ</span><span id="pause-label">停住雨幕</span></button>
+      <button id="legacy-rain" aria-pressed="false" title="保留相同参数和时间，切换上一版雨丝"><span class="button-icon" aria-hidden="true">⇄</span>上一版雨丝</button>
       <button id="compare" aria-pressed="false"><span class="button-icon" aria-hidden="true">◧</span><span id="compare-label">原图对照</span></button>
       <span class="divider"></span>
       <button id="adjust" aria-expanded="false"><span class="button-icon" aria-hidden="true">☷</span>调整</button>

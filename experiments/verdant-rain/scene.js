@@ -48,7 +48,8 @@ fn hash(n: f32) -> f32 { return fract(sin(n * 127.1 + 311.7) * 43758.5453); }
 struct RainVertex {
   @builtin(position) position: vec4f,
   @location(0) local: vec2f,
-  @location(1) data: vec3f
+  @location(1) data: vec3f,
+  @location(2) @interpolate(flat) brush: vec4f
 }
 @vertex fn rainVertex(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> RainVertex {
   let corners = array<vec2f, 6>(
@@ -66,8 +67,15 @@ struct RainVertex {
   var centre = vec2f(x, y);
   centre -= u.pointer.xy * vec2f(.011, -.006) * u.motion.w * near;
   let direction = normalize(vec2f(-.22 - u.motion.y * .58, 1.));
-  let length = (7. + near * 29.) * u.screen.y / 1080.;
-  let width = (.22 + near * .66) * u.screen.y / 1080.;
+  var length = (7. + near * 29.) * u.screen.y / 1080.;
+  var width = (.22 + near * .66) * u.screen.y / 1080.;
+  var brush = vec4f(0.);
+  if (u.art.z > .5) {
+    let lengthScale = .42 + .42 * hash(seed + 113.5) + .08 * near;
+    brush = vec4f(2. * hash(seed + 41.7) - 1., 6.28318530718 * hash(seed + 57.9), 2. * hash(seed + 91.3) - 1., lengthScale);
+    length *= lengthScale;
+    width *= (1.16 + .18 * near) * 3.2;
+  }
   let q = corners[vi];
   let offset = direction * q.y * length + vec2f(direction.y, -direction.x) * q.x * width;
   let uv = centre + offset / u.screen.xy;
@@ -75,15 +83,40 @@ struct RainVertex {
   o.position = vec4f(uv * vec2f(2., -2.) + vec2f(-1., 1.), 0., 1.);
   o.local = q;
   o.data = vec3f(depth, hash(seed + 29.3), near);
+  o.brush = brush;
   return o;
 }
 @fragment fn rainFragment(v: RainVertex) -> @location(0) vec4f {
+  let footprint = fwidth(v.local);
   let uv = v.position.xy / u.screen.xy;
-  let sceneDepth = textureSample(depthImage, imageSampler, uv).r;
-  if (v.data.x > sceneDepth + .012) { discard; }
-  let core = 1. - smoothstep(.05, 1., abs(v.local.x));
-  let tip = pow(max(0., 1. - abs(v.local.y)), .65);
-  let alpha = core * tip * (.09 + v.data.z * .19);
+  let d = textureSample(depthImage, imageSampler, uv).r;
+  let warpedDepth = textureSample(depthImage, imageSampler, sceneUV(uv, d)).r;
+  let sceneDepth = select(d, warpedDepth, u.art.z > .5);
+  var alpha: f32;
+  if (u.art.z < .5) {
+    if (v.data.x > sceneDepth + .012) { discard; }
+    let core = 1. - smoothstep(.05, 1., abs(v.local.x));
+    let tip = pow(max(0., 1. - abs(v.local.y)), .65);
+    alpha = core * tip * (.09 + v.data.z * .19);
+  } else {
+    let x = 3.2 * v.local.x;
+    let y = v.local.y;
+    let px = 3.2 * footprint.x;
+    let py = footprint.y;
+    let aa9 = 1. - smoothstep(.45, 1.8, 9. * py);
+    let aa17 = 1. - smoothstep(.45, 1.8, 17. * py);
+    let aa21 = 1. - smoothstep(.45, 1.8, 21. * py);
+    let phase = v.brush.y;
+    let bend = v.brush.x * (.55 + .75 * v.data.z);
+    let curve = bend * y * y * (1. - .25 * abs(y)) + .12 * (sin(4.2 * y + phase) - sin(phase)) * (1. - y * y);
+    let radius = .84 + .075 * sin(9. * y + phase) * aa9 + .04 * sin(21. * y + 1.37 * phase) * aa21;
+    let variance = radius * radius + .35 * px * px;
+    let core = exp(-2.2 * (x - curve) * (x - curve) / variance) * radius / sqrt(variance);
+    let tip = pow(max(0., 1. - abs(y)), .55) * (1. + .08 * y * v.brush.z);
+    let grain = .94 + .06 * sin(17. * y + 1.7 * phase) * aa17;
+    let occlusion = smoothstep(0., .018, sceneDepth - v.data.x);
+    alpha = 1.18 * core * tip * grain * (.09 + .19 * v.data.z) * occlusion;
+  }
   let flash = select(1., 2.9, v.data.y > .987);
   let colour = vec3f(.47, .78, .405) * (.7 + v.data.z * .45) * flash;
   return vec4f(colour, alpha);
@@ -275,7 +308,7 @@ export class RainScene {
   }
   uniforms(width, height, hdr) {
     const s = this.settings;
-    this.uniformValues.set([width, height, this.time, 0, s.rain, s.wind, s.haze, s.depth, s.vivid, hdr ? 3 : 1, 0, 0, this.pointer[0], this.pointer[1], 0, 0]);
+    this.uniformValues.set([width, height, this.time, 0, s.rain, s.wind, s.haze, s.depth, s.vivid, hdr ? 3 : 1, s.rainStyle === 0 ? 0 : 1, 0, this.pointer[0], this.pointer[1], 0, 0]);
     this.device.queue.writeBuffer(this.uniform, 0, this.uniformValues);
   }
   draw(target, context, format, hdr) {

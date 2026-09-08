@@ -62,6 +62,7 @@ precision highp float;
 precision highp int;
 out vec2 v_local;
 flat out vec3 v_data;
+flat out vec4 v_brush;
 ${sceneUniforms}
 float hash(float n) { return fract(sin(n * 127.1 + 311.7) * 43758.5453); }
 void main() {
@@ -81,6 +82,15 @@ void main() {
   vec2 direction = normalize(vec2(-.22 - u_motion.y * .58, 1.));
   float streakLength = (7. + nearness * 29.) * u_screen.y / 1080.;
   float streakWidth = (.22 + nearness * .66) * u_screen.y / 1080.;
+  v_brush = vec4(0.);
+  if (u_art.z >= .5) {
+    // Shape changes only: keep the existing seed, centre, direction and velocity.
+    float lengthScale = .42 + .42 * hash(seed + 113.5) + .08 * nearness;
+    streakLength *= lengthScale;
+    streakWidth *= (1.16 + .18 * nearness) * 3.2;
+    v_brush = vec4(2. * hash(seed + 41.7) - 1., 6.2831853 * hash(seed + 57.9),
+      2. * hash(seed + 91.3) - 1., lengthScale);
+  }
   vec2 q = corners[gl_VertexID];
   vec2 offset = direction * q.y * streakLength + vec2(direction.y, -direction.x) * q.x * streakWidth;
   vec2 uv = centre + offset / u_screen.xy;
@@ -93,19 +103,52 @@ const rainFragment = `#version 300 es
 precision highp float;
 in vec2 v_local;
 flat in vec3 v_data;
+flat in vec4 v_brush;
 out vec4 outColour;
 uniform highp sampler2D u_depth;
 ${sceneUniforms}
 ${sceneUV}
 void main() {
+  // Evaluate derivatives before any non-uniform depth discard. They filter the
+  // drop-local brush texture instead of introducing frame- or screen-space noise.
+  vec2 footprint = fwidth(v_local);
   // Fragment coordinates have a bottom-left origin; the original and mask do not.
   vec2 uv = vec2(gl_FragCoord.x / u_screen.x, 1. - gl_FragCoord.y / u_screen.y);
   float d = texture(u_depth, uv).r;
   float sceneDepth = texture(u_depth, sceneUV(uv, d)).r;
-  if (v_data.x > sceneDepth + .012) discard;
-  float core = 1. - smoothstep(.05, 1., abs(v_local.x));
-  float tip = pow(max(0., 1. - abs(v_local.y)), .65);
-  float alpha = core * tip * (.09 + v_data.z * .19);
+  if (u_art.z < .5) {
+    // Exact legacy formula for the same-time A/B comparison.
+    if (v_data.x > sceneDepth + .012) discard;
+    float core = 1. - smoothstep(.05, 1., abs(v_local.x));
+    float tip = pow(max(0., 1. - abs(v_local.y)), .65);
+    float alpha = core * tip * (.09 + v_data.z * .19);
+    float flash = v_data.y > .987 ? 2.9 : 1.;
+    vec3 colour = vec3(.47, .78, .405) * (.7 + v_data.z * .45) * flash;
+    outColour = vec4(colour, alpha);
+    return;
+  }
+  float x = v_local.x * 3.2, y = v_local.y;
+  float phase = v_brush.y;
+  float bend = v_brush.x * (.55 + .75 * v_data.z);
+  // The curve passes through (0,0), preserving the original drop's centre.
+  float curve = bend * y * y * (1. - .25 * abs(y))
+    + .12 * (sin(4.2 * y + phase) - sin(phase)) * (1. - y * y);
+  float aa9 = 1. - smoothstep(.45, 1.8, 9. * footprint.y);
+  float aa17 = 1. - smoothstep(.45, 1.8, 17. * footprint.y);
+  float aa21 = 1. - smoothstep(.45, 1.8, 21. * footprint.y);
+  float radius = .84 + .075 * sin(9. * y + phase) * aa9
+    + .04 * sin(21. * y + 1.37 * phase) * aa21;
+  float acrossFootprint = footprint.x * 3.2;
+  float variance = radius * radius + .35 * acrossFootprint * acrossFootprint;
+  float distanceFromCurve = x - curve;
+  // Energy-preserving edge filtering avoids bright, flickering one-pixel rulers.
+  float core = exp(-2.2 * distanceFromCurve * distanceFromCurve / variance)
+    * radius / sqrt(variance);
+  float tip = pow(max(0., 1. - abs(y)), .55) * (1. + .08 * y * v_brush.z);
+  float grain = .94 + .06 * sin(17. * y + 1.7 * phase) * aa17;
+  // Fade only while approaching the occluder from in front; behind it alpha is 0.
+  float visibility = smoothstep(0., .018, sceneDepth - v_data.x);
+  float alpha = 1.18 * core * tip * grain * (.09 + v_data.z * .19) * visibility;
   float flash = v_data.y > .987 ? 2.9 : 1.;
   vec3 colour = vec3(.47, .78, .405) * (.7 + v_data.z * .45) * flash;
   outColour = vec4(colour, alpha);
@@ -331,7 +374,7 @@ export class RainSceneGL {
     gl.useProgram(info.program);
     gl.uniform4f(u.screen, width, height, this.time, 0);
     gl.uniform4f(u.motion, s.rain, s.wind, s.haze, s.depth);
-    gl.uniform4f(u.art, s.vivid, 1, 0, 0);
+    gl.uniform4f(u.art, s.vivid, 1, this.settings.rainStyle === 0 ? 0 : 1, 0);
     gl.uniform4f(u.pointer, this.pointer[0], this.pointer[1], 0, 0);
   }
   draw(target) {

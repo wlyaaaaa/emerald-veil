@@ -3,7 +3,7 @@ import { RainSceneGL } from './scene-gl.js';
 
 const $ = (id) => document.getElementById(id);
 const defaults = Object.freeze({ vivid: 0.5, rain: 0.75, wind: 0, haze: 0.5, depth: 0 });
-const settings = { ...defaults };
+const settings = { ...defaults, rainStyle: 1 };
 let scene, paused = false, holding = false, comparing = false, ready = false;
 const search = new URLSearchParams(location.search);
 
@@ -22,6 +22,14 @@ function setCompare(value) {
   $('compare-label').textContent = value ? '回到雨林' : '原图对照';
   updatePause();
 }
+function setRainStyle(value) {
+  settings.rainStyle = value === 0 ? 0 : 1;
+  const legacy = settings.rainStyle === 0;
+  $('legacy-rain').setAttribute('aria-pressed', String(legacy));
+  $('edition-label').textContent = legacy ? '原画实验 · 上一版雨丝' : '原画实验 · 第二幕';
+  $('edition-caption').textContent = legacy ? '同样的颜色，同样的一场雨。' : '让雨落进画里。';
+  $('scene').dataset.rainStyle = legacy ? 'legacy' : 'painterly';
+}
 function toggleTuning(open) {
   $('tuning').hidden = !open;
   $('adjust').setAttribute('aria-expanded', String(open));
@@ -35,12 +43,14 @@ for (const name of Object.keys(defaults)) {
 }
 $('reset').addEventListener('click', () => {
   Object.assign(settings, defaults);
+  setRainStyle(1);
   for (const name of Object.keys(defaults)) {
     $(name).value = String(settings[name]);
     $(name + '-value').textContent = Math.round(settings[name] * 100) + '%';
   }
 });
 $('pause').addEventListener('click', () => { paused = !paused; updatePause(); });
+$('legacy-rain').addEventListener('click', () => setRainStyle(settings.rainStyle === 0 ? 1 : 0));
 $('compare').addEventListener('click', () => setCompare(!comparing));
 $('adjust').addEventListener('click', () => toggleTuning($('tuning').hidden));
 $('close-tuning').addEventListener('click', () => toggleTuning(false));
@@ -78,16 +88,29 @@ $('export').addEventListener('click', async () => {
   const button = $('export');
   button.textContent = '正在保存…';
   try {
-    const blob = await scene.exportPNG(3840, 2160);
+    let blob;
+    if (comparing) {
+      const originalCanvas = document.createElement('canvas');
+      originalCanvas.width = 3840; originalCanvas.height = 2160;
+      originalCanvas.getContext('2d').drawImage($('reference'), 0, 0, 3840, 2160);
+      blob = await new Promise((resolve, reject) => originalCanvas.toBlob(
+        value => value ? resolve(value) : reject(new Error('原图静帧编码失败。')), 'image/png'
+      ));
+    } else {
+      blob = await scene.exportPNG(3840, 2160);
+    }
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url; link.download = '青雨-4K静帧.png'; link.click();
+    link.href = url;
+    link.download = comparing ? '青雨-原图-4K.png' : settings.rainStyle === 0 ? '青雨-上一版雨丝-4K.png' : '青雨-第二幕-4K.png';
+    link.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   } catch (error) { showMessage('静帧保存失败：' + error.message); }
   finally { button.textContent = '保存 4K 静帧'; }
 });
 
 try {
+  setRainStyle(search.has('legacy') ? 0 : 1);
   const options = {
     image: $('reference').src,
     depth: new URL('./assets/depth.png', import.meta.url).href,
