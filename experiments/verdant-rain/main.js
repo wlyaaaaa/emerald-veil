@@ -2,7 +2,7 @@ import { RainScene } from './scene.js';
 import { RainSceneGL } from './scene-gl.js';
 
 const $ = (id) => document.getElementById(id);
-const defaults = Object.freeze({ vivid: 0.65, rain: 0.75, wind: 0.35, haze: 0.3, depth: 0.45 });
+const defaults = Object.freeze({ vivid: 0.5, rain: 0.75, wind: 0, haze: 0.5, depth: 0 });
 const settings = { ...defaults };
 let scene, paused = false, holding = false, comparing = false, ready = false;
 const search = new URLSearchParams(location.search);
