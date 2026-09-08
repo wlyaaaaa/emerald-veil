@@ -1,5 +1,7 @@
 # Emerald Veil
 
+Windows 底层壁纸与系统锁屏现在可从本项目恢复为已验收的 **青雨 · 第二幕 4K 静帧**，保留 Wallpaper Engine。运行 `scripts/Set-WindowsBackground.ps1 -Action Apply`；换机使用相同入口。素材、参数与操作说明见 [Windows 壁纸与锁屏恢复](docs/windows-background.md)。这一入口独立于下面的泡泡程序。
+
 Emerald Veil is a small, reversible Windows-native Bubbles overlay for OLED idle use. After six minutes without meaningful keyboard or mouse input, it shows the copy of `Bubbles.scr` already supplied by Windows above the selected project background. The original Microsoft colors, glass material, size, count policy, and motion stay intact.
 
 The selected background is the project-owned `assets/emerald-veil-background.jpg` (3840×2160), embedded in the installed watchdog and rendered as a full-size click-through layer beneath native Bubbles. While visible, the watchdog keeps that layer immediately below the native Bubbles HWND so Wallpaper Engine cannot be inserted between them. The watchdog does not capture the desktop or depend on the Windows/Wallpaper Engine wallpaper owner.

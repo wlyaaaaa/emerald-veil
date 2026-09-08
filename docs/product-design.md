@@ -1,5 +1,7 @@
 # Product design
 
+The project also preserves the selected 4K rain still and a one-shot native Windows desktop/lock-screen recovery entry. Its contract is [Windows background recovery](windows-background.md). This static background operation does not modify Wallpaper Engine, start or alter the Bubbles watchdog, or resume the rejected cat experiment. The runtime contract below continues to describe Bubbles only.
+
 ## Product contract
 
 The active product is a reversible Windows-native Bubbles overlay plus a small no-console idle watchdog:

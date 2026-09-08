@@ -1,0 +1,16 @@
+{
+  "name": "青雨 · 第二幕",
+  "image": "verdant-rain-4k.png",
+  "sha256": "46CC9437FEB7EFB96ED926AEAF6DC26535F22EB72049978D022F9A46F8688E16",
+  "width": 3840,
+  "height": 2160,
+  "color": "sRGB SDR",
+  "renderSettings": {
+    "vivid": 0.5,
+    "rain": 0.75,
+    "wind": 0,
+    "haze": 0.5,
+    "depth": 0,
+    "rainStyle": 1
+  }
+}
