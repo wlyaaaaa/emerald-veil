@@ -27,9 +27,12 @@ The private `Radius` setting is not a documented Windows API. Emerald Veil recor
 
 ## Use
 
-PowerShell 7 on Windows 11 is the tested target. Administrator rights are not required.
+PowerShell 7 on Windows 11 is the tested target. Administrator rights are not required. Building the Bubbles app from source requires the .NET 10 SDK; the independent static-background script needs only Windows PowerShell.
 
 ```powershell
+# Build the single executable at the installer's default source location.
+dotnet publish .\src\EmeraldVeil.App\EmeraldVeil.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\artifacts\publish\win-x64
+
 # Install/update the silent watchdog and direct per-user startup entry.
 pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Install
 

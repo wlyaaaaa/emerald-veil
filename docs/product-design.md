@@ -44,6 +44,8 @@ Runtime setters use active=false, timeout=360, and secure=false. Windows can rec
 
 The same watchdog checks runtime active/timeout/secure state every 30 seconds and reasserts false/360/false only when drift is observed. This repairs driver-reset or system-setting reconstruction without adding a second helper or touching the visible overlay/window contract.
 
+Wallpaper Engine control commands must both finish within three seconds and return exit code zero. A nonzero result is an initialization or resume failure, not successful playback control. This result check does not itself prove that the intended pixels appeared on the desktop; actual visual acceptance remains separate.
+
 ## Remote and input boundary
 
 Remote-control and streaming products are not detectable as a complete, reliable class, so Emerald Veil does not maintain an allowlist or attempt generic remote-session suppression. Compatibility comes from staying on the user's existing interactive desktop, keeping the Windows automatic/secure trigger disabled, using a click-through image background plus color-keyed native bubbles, and avoiding capture or display reconfiguration. ToDesk, Sunshine, UU/GameViewer, and future tools all receive the same behavior.

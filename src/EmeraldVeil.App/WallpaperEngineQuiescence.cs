@@ -97,6 +97,12 @@ internal sealed class WallpaperEngineQuiescence : IDisposable
             throw new TimeoutException(
                 $"Wallpaper Engine control command timed out: {command}.");
         }
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Wallpaper Engine control command failed with exit code {process.ExitCode}: {command}.");
+        }
     }
 
     private static int? TryGetSessionId(Process process)

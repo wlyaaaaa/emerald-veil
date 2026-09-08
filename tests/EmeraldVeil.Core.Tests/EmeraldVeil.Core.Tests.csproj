@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\EmeraldVeil.Core\EmeraldVeil.Core.csproj" />
+    <Compile Include="..\..\src\EmeraldVeil.App\WallpaperEngineQuiescence.cs" Link="WallpaperEngineQuiescence.cs" />
   </ItemGroup>
 
 </Project>
