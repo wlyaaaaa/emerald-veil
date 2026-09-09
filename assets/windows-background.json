@@ -1,16 +1,20 @@
 {
-  "name": "青雨 · 第二幕",
+  "name": "雨林黑猫 · 更绿版",
   "image": "verdant-rain-4k.png",
-  "sha256": "46CC9437FEB7EFB96ED926AEAF6DC26535F22EB72049978D022F9A46F8688E16",
+  "sha256": "FA8D1FDC7799D537864D2784B5718E8BA15B77775D246C019179084B0F0239E7",
   "width": 3840,
   "height": 2160,
   "color": "sRGB SDR",
-  "renderSettings": {
-    "vivid": 0.5,
-    "rain": 0.75,
-    "wind": 0,
-    "haze": 0.5,
-    "depth": 0,
-    "rainStyle": 1
+  "source": {
+    "kind": "user-selected-generated-illustration",
+    "width": 1672,
+    "height": 941,
+    "sha256": "61C9224FC6359C27FC55D9B15DDD8BFEF33FE24A94D63B12F1EFAA437EA3077A",
+    "superResolution": {
+      "tool": "Real-ESRGAN",
+      "model": "realesrgan-x4plus",
+      "scale": 4
+    },
+    "resize": "high-quality-bicubic-downsample"
   }
 }

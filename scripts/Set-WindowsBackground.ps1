@@ -27,7 +27,26 @@ using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+[ComImport, Guid("B92B56A9-8B55-4E14-9A89-0199BBB6F93B"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IDesktopWallpaper {
+    void SetWallpaper([MarshalAs(UnmanagedType.LPWStr)] string monitorId, [MarshalAs(UnmanagedType.LPWStr)] string path);
+    [return: MarshalAs(UnmanagedType.LPWStr)] string GetWallpaper([MarshalAs(UnmanagedType.LPWStr)] string monitorId);
+    [return: MarshalAs(UnmanagedType.LPWStr)] string GetMonitorDevicePathAt(uint index);
+    uint GetMonitorDevicePathCount();
+    [PreserveSig] int GetMonitorRECT([MarshalAs(UnmanagedType.LPWStr)] string monitorId, out MonitorRect rect);
+}
+[StructLayout(LayoutKind.Sequential)]
+struct MonitorRect { public int Left, Top, Right, Bottom; }
+public sealed class MonitorBackground {
+    public string devicePath;
+    public string path;
+    public bool connected;
+}
 public static class EmeraldBackgroundReadback {
+    private static IDesktopWallpaper OpenDesktop() {
+        return (IDesktopWallpaper)Activator.CreateInstance(Type.GetTypeFromCLSID(
+            new Guid("C2CF3110-460E-4FC1-B9D0-8A1C0C9CC4BD")));
+    }
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool SystemParametersInfo(uint action, uint size, StringBuilder value, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -35,6 +54,34 @@ public static class EmeraldBackgroundReadback {
     public static void SetDesktopPath(string path) {
         if (!SystemParametersInfo(0x0014, 0, path, 3))
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        var desktop = OpenDesktop();
+        try {
+            // NULL selects the common wallpaper. Also clear remembered per-monitor
+            // choices, including a detached VDD, without changing display topology.
+            desktop.SetWallpaper(null, path);
+            for (uint i = 0; i < desktop.GetMonitorDevicePathCount(); i++) {
+                string id = desktop.GetMonitorDevicePathAt(i);
+                if (!String.Equals(desktop.GetWallpaper(id), path, StringComparison.OrdinalIgnoreCase))
+                    desktop.SetWallpaper(id, path);
+            }
+        } finally { Marshal.FinalReleaseComObject(desktop); }
+    }
+    public static MonitorBackground[] MonitorPaths() {
+        var desktop = OpenDesktop();
+        try {
+            var monitors = new MonitorBackground[desktop.GetMonitorDevicePathCount()];
+            for (uint i = 0; i < monitors.Length; i++) {
+                string id = desktop.GetMonitorDevicePathAt(i);
+                MonitorRect rect;
+                int result = desktop.GetMonitorRECT(id, out rect);
+                if (result < 0) Marshal.ThrowExceptionForHR(result);
+                monitors[i] = new MonitorBackground {
+                    devicePath = id, path = desktop.GetWallpaper(id),
+                    connected = result == 0 && rect.Right > rect.Left && rect.Bottom > rect.Top
+                };
+            }
+            return monitors;
+        } finally { Marshal.FinalReleaseComObject(desktop); }
     }
     public static string DesktopPath() {
         var path = new StringBuilder(32768);
@@ -143,12 +190,34 @@ function Get-CurrentState {
     $lockBytes = Get-LockImageBytes
     $lockError = [EmeraldBackgroundReadback]::ImageError($sourceImage, $lockBytes)
     $rotating = @(Get-PictureSelectors | Where-Object { -not $_.present -or $_.kind -ne 'DWord' -or $_.value -ne 0 })
+    $monitors = @([EmeraldBackgroundReadback]::MonitorPaths() | ForEach-Object {
+        [pscustomobject]@{
+            devicePath = $_.devicePath; connected = $_.connected; path = $_.path
+            matches = [bool](Test-InstalledImage $_.path)
+        }
+    })
     [pscustomobject]@{
         desktopPath = $desktopPath
-        desktopMatches = ((Test-InstalledImage $desktopPath) -and @($rotating | Where-Object { $_.surface -eq 'desktop' }).Count -eq 0)
+        desktopMatches = ((Test-InstalledImage $desktopPath) -and $monitors.Count -gt 0 -and
+            @($monitors | Where-Object { -not $_.matches }).Count -eq 0 -and
+            @($rotating | Where-Object { $_.surface -eq 'desktop' }).Count -eq 0)
+        desktopMonitors = $monitors
         lockScreenPath = $lockPath
         lockScreenMatches = ((Test-InstalledImage $lockPath) -and $lockError -le 3 -and @($rotating | Where-Object { $_.surface -eq 'lockScreen' }).Count -eq 0)
         lockScreenPixelMeanError = [Math]::Round($lockError, 4)
+    }
+}
+
+function Get-MonitorPreimage {
+    foreach ($monitor in [EmeraldBackgroundReadback]::MonitorPaths()) {
+        $hash = Get-ImageHash $monitor.path
+        $backup = $null
+        if ($hash) {
+            $backup = Join-Path $stateDirectory ('previous-monitor-' + $hash.Substring(0, 12) + [IO.Path]::GetExtension($monitor.path))
+            if (-not (Test-Path -LiteralPath $backup)) { Copy-Item -LiteralPath $monitor.path -Destination $backup }
+            if ((Get-ImageHash $backup) -ne $hash) { throw 'Monitor preimage verification failed.' }
+        }
+        [pscustomobject]@{ devicePath = $monitor.devicePath; connected = $monitor.connected; path = $monitor.path; backup = $backup }
     }
 }
 
@@ -157,9 +226,18 @@ function Save-Preimage {
         $previous = Get-Content -LiteralPath $preimagePath -Raw -Encoding UTF8 | ConvertFrom-Json
         # Upgrade only the previously uncaptured selector fields, before this
         # script changes them for the first time. Preserve the original images.
+        $upgraded = $false
         if ($previous.PSObject.Properties.Name -notcontains 'pictureSelectors') {
             $previous | Add-Member -NotePropertyName pictureSelectors -NotePropertyValue @(Get-PictureSelectors)
             $previous | Add-Member -NotePropertyName selectorsCapturedUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o'))
+            $upgraded = $true
+        }
+        if ($previous.PSObject.Properties.Name -notcontains 'desktopMonitors') {
+            $previous | Add-Member -NotePropertyName desktopMonitors -NotePropertyValue @(Get-MonitorPreimage)
+            $previous | Add-Member -NotePropertyName monitorsCapturedUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o'))
+            $upgraded = $true
+        }
+        if ($upgraded) {
             $temporary = Join-Path $stateDirectory ('preimage-' + [Guid]::NewGuid().ToString('N') + '.tmp')
             [IO.File]::WriteAllText($temporary, ($previous | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
             [IO.File]::Replace($temporary, $preimagePath, "$preimagePath.previous")
@@ -188,6 +266,7 @@ function Save-Preimage {
         lockScreenOriginalUri = $lockUri.AbsoluteUri
         lockScreenBackup = $lockBackup
         pictureSelectors = @(Get-PictureSelectors)
+        desktopMonitors = @(Get-MonitorPreimage)
     }
     $temporary = Join-Path $stateDirectory ('preimage-' + [Guid]::NewGuid().ToString('N') + '.tmp')
     [IO.File]::WriteAllText($temporary, ($preimage | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
@@ -226,7 +305,7 @@ $passed = $after.desktopMatches -and $after.lockScreenMatches
     image = $selection.name
     sha256 = $selection.sha256
     changedSurfaces = @($changes.ToArray())
-    desktop = [ordered]@{ matches = $after.desktopMatches; path = $after.desktopPath }
+    desktop = [ordered]@{ matches = $after.desktopMatches; path = $after.desktopPath; monitors = @($after.desktopMonitors) }
     lockScreen = [ordered]@{
         matches = $after.lockScreenMatches
         path = $after.lockScreenPath

@@ -5,8 +5,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="..\..\assets\emerald-veil-background.jpg"
-              Link="Assets\emerald-veil-background.jpg" />
+    <Resource Include="..\..\assets\verdant-rain-4k.png"
+              Link="Assets\verdant-rain-4k.png" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -24,7 +24,7 @@
     <!-- The installer deploys one executable. Embed WPF's native runtime files
          so the installed watchdog does not depend on publish-directory DLLs. -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <Version>0.1.26</Version>
+    <Version>0.1.27</Version>
   </PropertyGroup>
 
 </Project>

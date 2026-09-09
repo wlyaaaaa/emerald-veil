@@ -1,6 +1,6 @@
 # Product design
 
-The project also preserves the selected 4K rain still and a one-shot native Windows desktop/lock-screen recovery entry. Its contract is [Windows background recovery](windows-background.md). This static background operation does not modify Wallpaper Engine, start or alter the Bubbles watchdog, or resume the rejected cat experiment. The runtime contract below continues to describe Bubbles only.
+The project preserves one selected 4K green rainforest-and-cat image shared by the embedded Bubbles background and the one-shot native Windows desktop/lock-screen recovery entry. Its contract is [Windows background recovery](windows-background.md). The entry applies and verifies every Windows monitor, including VDD and remembered detached monitors. This static background operation does not modify Wallpaper Engine, start or alter the Bubbles watchdog, or resume the rejected cat experiment. Updating the embedded image still requires rebuilding and installing the watchdog. The runtime contract below continues to describe Bubbles only.
 
 ## Product contract
 
@@ -17,7 +17,7 @@ The active product is a reversible Windows-native Bubbles overlay plus a small n
 
 Windows' configured automatic screen-saver/lock trigger remains inactive. The application starts `/s` itself only when its own reliable idle clock reaches six minutes; it does not use Windows' foreground `SC_SCREENSAVE` delivery path. The visible output is a native Bubbles window above the embedded project image, not a screenshot, checkerboard, secure desktop, or custom-drawn bubble scene.
 
-The project-owned `assets/emerald-veil-background.jpg` (3840×2160) is embedded in the watchdog and rendered by the WPF background layer. It is not loaded into or copied by the Bubbles renderer, and the feature does not depend on which application currently owns the Windows desktop wallpaper.
+The project-owned `assets/verdant-rain-4k.png` (3840×2160), also selected by `assets/windows-background.json`, is embedded in the watchdog and rendered by the WPF background layer. It is not loaded into or copied by the Bubbles renderer, and the feature does not depend on which application currently owns the Windows desktop wallpaper. The original JPG remains only as the independent rain experiment's reference image.
 
 ## Size and display policy
 

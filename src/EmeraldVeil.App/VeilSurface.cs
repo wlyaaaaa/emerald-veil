@@ -7,7 +7,7 @@ namespace EmeraldVeil.App;
 internal sealed class VeilSurface : FrameworkElement
 {
     private const string BackgroundResourceUri =
-        "pack://application:,,,/Assets/emerald-veil-background.jpg";
+        "pack://application:,,,/Assets/verdant-rain-4k.png";
     private static readonly BitmapSource BackgroundImage = LoadBackgroundImage();
 
     internal VeilSurface()
