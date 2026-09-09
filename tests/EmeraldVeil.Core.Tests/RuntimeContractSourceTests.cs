@@ -80,9 +80,30 @@ public sealed class RuntimeContractSourceTests
             controller,
             StringComparison.Ordinal);
         Assert.Contains("RequiredTimeoutSeconds = 360", settings, StringComparison.Ordinal);
+        Assert.Contains("HasRequiredPersistedTimeout()", settings, StringComparison.Ordinal);
+        Assert.Contains("PersistRequiredTimeout()", settings, StringComparison.Ordinal);
+        Assert.Contains(
+            "active || runtimeTimeout != 0",
+            settings,
+            StringComparison.Ordinal);
         Assert.Contains("NativeMethods.GetScreenSaverTimeout()", settings, StringComparison.Ordinal);
         Assert.Contains("NativeMethods.GetScreenSaverSecure()", settings, StringComparison.Ordinal);
         Assert.Contains("NativeMethods.GetScreenSaverActive()", settings, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Windows_background_uses_the_user_pictures_folder_and_one_wallpaper_api()
+    {
+        string root = FindRepositoryRoot();
+        string script = File.ReadAllText(Path.Combine(
+            root,
+            "scripts",
+            "Set-WindowsBackground.ps1"));
+
+        Assert.Contains("GetFolderPath('MyPictures')", script, StringComparison.Ordinal);
+        Assert.Contains("desktop.SetWallpaper(null, path);", script, StringComparison.Ordinal);
+        Assert.Contains("return desktop.GetWallpaper(null);", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("0x0014", script, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -532,8 +532,10 @@ function Get-NativeBubblesStatus {
             [StringComparison]::OrdinalIgnoreCase)) {
         $problems.Add('SCRNSAVE.EXE does not point to the native Bubbles screen saver.')
     }
-    if ($timeout -ne [string]$timeoutSeconds -or $timeoutRuntime -ne $timeoutSeconds) {
-        $problems.Add("Screen saver timeout is not $timeoutSeconds seconds in both registry and runtime state.")
+    $runtimeTimeoutMatches = $timeoutRuntime -eq $timeoutSeconds -or
+        (-not $activeRuntime -and $timeoutRuntime -eq 0)
+    if ($timeout -ne [string]$timeoutSeconds -or -not $runtimeTimeoutMatches) {
+        $problems.Add("Screen saver timeout is not $timeoutSeconds seconds in the registry, or its active runtime value is not $timeoutSeconds.")
     }
     if (-not $timeoutEntry.exists -or $timeoutEntry.kind -ne 'String') {
         $problems.Add('ScreenSaveTimeOut is not present as REG_SZ.')
@@ -585,7 +587,9 @@ function Get-NativeBubblesStatus {
         screen_saver = $bubblesExecutable
         render_mode = 'native_full_size_overlay'
         windows_fullscreen_trigger = $false
-        timeout_seconds = [int]$timeoutRuntime
+        timeout_seconds = [int]$timeout
+        runtime_timeout_seconds = [int]$timeoutRuntime
+        runtime_timeout_effective = [bool]($timeoutRuntime -eq $timeoutSeconds)
         secure = $secureRuntime
         radius_dword = [uint32]$radius
         radius_float = [BitConverter]::ToSingle(

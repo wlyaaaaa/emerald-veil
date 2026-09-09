@@ -42,7 +42,7 @@ Per-Monitor V2 awareness is declared before any HWND is created. `Screen.Primary
 
 Runtime setters use active=false, timeout=360, and secure=false. Windows can reconstruct active=true during sign-in even while the registry remains `ScreenSaveActive=0`, so the enabled watchdog reasserts runtime active=false on every login start before monitoring idle time. This prevents Windows from independently launching a second screen saver at the same threshold. The only helper is the direct WinExe `HKCU\...\Run` value; there is no service, SYSTEM process, scheduled task, console, shell interpreter, capture API, network listener, or telemetry.
 
-The same watchdog checks runtime active/timeout/secure state every 30 seconds and reasserts false/360/false only when drift is observed. This repairs driver-reset or system-setting reconstruction without adding a second helper or touching the visible overlay/window contract.
+The same watchdog checks the persisted timeout plus runtime active/timeout/secure state every 30 seconds and reasserts false/360/false only when drift is observed. On Windows 11 builds that report an effective runtime timeout of `0` whenever the automatic trigger is disabled, `0` is accepted only with runtime `active=false`; the persisted `REG_SZ` value remains `360`, and the watchdog's own six-minute timeline remains authoritative. This repairs driver-reset or system-setting reconstruction without adding a second helper or touching the visible overlay/window contract.
 
 Wallpaper Engine control commands must both finish within three seconds and return exit code zero. A nonzero result is an initialization or resume failure, not successful playback control. This result check does not itself prove that the intended pixels appeared on the desktop; actual visual acceptance remains separate.
 
@@ -97,7 +97,7 @@ The record is flushed to a same-directory temporary file and atomically moved to
 
 - PowerShell parser and embedded `SystemParametersInfoW` interop compile.
 - Release build and unit tests pass.
-- `Enable` reads back the absolute system path, exact registry kinds/values, timeout=360, secure=false, enabled flag=1, and Windows active=false.
+- `Enable` reads back the absolute system path, exact registry kinds/values, persisted timeout=360, secure=false, enabled flag=1, and Windows active=false; an effective runtime timeout of 0 is accepted only when Windows also reports active=false.
 - The direct startup entry points to the installed WinExe; no legacy startup entry, service, scheduled task, or shell wrapper remains.
 - A user-authorized visual check observes native maximum-size multicolor bubbles over the embedded 3840×2160 project background for at least 15 seconds with no black, grey, checkerboard, unintended wallpaper fallback, or spontaneous cleanup.
 - The selected HWND exactly matches the target physical rectangle and includes layered, transparent, no-activate, tool-window, and topmost styles.

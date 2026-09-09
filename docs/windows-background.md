@@ -20,7 +20,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Set-WindowsBac
 - `assets/windows-background.json`：选图、校验值、来源尺寸和处理方式。
 - `assets/verdant-rain-4k.png`：已验收静帧，直接使用，不重新生成。
 
-脚本把静帧复制到当前用户的 `%LOCALAPPDATA%\EmeraldVeil\windows-background`，因此设置后搬动项目目录不影响当前壁纸。它通过 Windows 桌面接口和锁屏接口设置图片，明确选择固定图片模式，并通过 `IDesktopWallpaper` 设置共同底图、清除每屏旧选图，逐块回读已连接显示器及 Windows 仍记得的离线显示器。VDD 无需固定设备编号，也不改变显示器连接或排列。只有所有屏幕的图像内容、固定模式和持久副本引用以及锁屏均正确时才跳过；确有漂移才重设，并使用新输入文件名避免 Windows 缓存旧图。
+脚本把 Windows 使用的静帧复制到当前用户的 `%USERPROFILE%\Pictures\EmeraldVeil`，把回滚记录和原图备份留在 `%LOCALAPPDATA%\EmeraldVeil\windows-background`，因此设置后搬动项目目录不影响当前壁纸。Windows 的桌面接口在部分 Windows 11 版本会拒绝从 `AppData\Local` 读取壁纸，所以显示文件使用用户图片目录，仍是同一份 PNG 和同一校验值。脚本通过 Windows 桌面接口和锁屏接口设置图片，明确选择固定图片模式，并通过 `IDesktopWallpaper` 设置共同底图、清除每屏旧选图，逐块回读已连接显示器及 Windows 仍记得的离线显示器。VDD 无需固定设备编号，也不改变显示器连接或排列。只有所有屏幕的图像内容、固定模式和持久副本引用以及锁屏均正确时才跳过；确有漂移才重设，并使用新输入文件名避免 Windows 缓存旧图。
 
 只检查而不改动：
 

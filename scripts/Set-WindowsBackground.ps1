@@ -26,7 +26,6 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 [ComImport, Guid("B92B56A9-8B55-4E14-9A89-0199BBB6F93B"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IDesktopWallpaper {
     void SetWallpaper([MarshalAs(UnmanagedType.LPWStr)] string monitorId, [MarshalAs(UnmanagedType.LPWStr)] string path);
@@ -47,15 +46,13 @@ public static class EmeraldBackgroundReadback {
         return (IDesktopWallpaper)Activator.CreateInstance(Type.GetTypeFromCLSID(
             new Guid("C2CF3110-460E-4FC1-B9D0-8A1C0C9CC4BD")));
     }
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool SystemParametersInfo(uint action, uint size, StringBuilder value, uint flags);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool SystemParametersInfo(uint action, uint size, string value, uint flags);
     public static void SetDesktopPath(string path) {
-        if (!SystemParametersInfo(0x0014, 0, path, 3))
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
         var desktop = OpenDesktop();
         try {
+            // IDesktopWallpaper is the supported per-monitor API. On some Windows
+            // 11 builds SPI_SETDESKWALLPAPER rejects user-managed image locations
+            // even though this API can read them, so do not make the redundant SPI
+            // call a prerequisite for setting the common and per-monitor wallpaper.
             // NULL selects the common wallpaper. Also clear remembered per-monitor
             // choices, including a detached VDD, without changing display topology.
             desktop.SetWallpaper(null, path);
@@ -64,6 +61,10 @@ public static class EmeraldBackgroundReadback {
                 if (!String.Equals(desktop.GetWallpaper(id), path, StringComparison.OrdinalIgnoreCase))
                     desktop.SetWallpaper(id, path);
             }
+            // A per-monitor override can clear the common path on Windows 11.
+            // Reassert it after the exact monitor set so both readback surfaces
+            // remain stable.
+            desktop.SetWallpaper(null, path);
         } finally { Marshal.FinalReleaseComObject(desktop); }
     }
     public static MonitorBackground[] MonitorPaths() {
@@ -84,10 +85,9 @@ public static class EmeraldBackgroundReadback {
         } finally { Marshal.FinalReleaseComObject(desktop); }
     }
     public static string DesktopPath() {
-        var path = new StringBuilder(32768);
-        if (!SystemParametersInfo(0x0073, (uint)path.Capacity, path, 0))
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-        return path.ToString();
+        var desktop = OpenDesktop();
+        try { return desktop.GetWallpaper(null); }
+        finally { Marshal.FinalReleaseComObject(desktop); }
     }
     // Windows may transcode its lock-screen cache. Compare decoded pixels as
     // well as the selected source; a different encoding is not image drift.
@@ -119,6 +119,7 @@ if ((Get-FileHash -LiteralPath $sourceImage -Algorithm SHA256).Hash -ne $selecti
     throw 'The selected image does not match the project manifest.'
 }
 $stateDirectory = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'EmeraldVeil\windows-background'
+$imageDirectory = Join-Path ([Environment]::GetFolderPath('MyPictures')) 'EmeraldVeil'
 $preimagePath = Join-Path $stateDirectory 'before-first-apply.json'
 $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
     $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and
@@ -171,7 +172,7 @@ function Get-ImageHash {
 function Test-InstalledImage {
     param([string]$Path)
     return $Path -and [IO.Path]::GetFullPath($Path).StartsWith(
-        [IO.Path]::GetFullPath($stateDirectory).TrimEnd('\') + '\',
+        [IO.Path]::GetFullPath($imageDirectory).TrimEnd('\') + '\',
         [StringComparison]::OrdinalIgnoreCase) -and (Get-ImageHash $Path) -eq $selection.sha256
 }
 
@@ -283,7 +284,8 @@ if ($Action -eq 'Apply' -and (-not $before.desktopMatches -or -not $before.lockS
     }
     # Use a new input filename when reapplying after actual drift. Windows can
     # otherwise keep an old image even though the source file has been replaced.
-    $installedImage = Join-Path $stateDirectory ('rain-' + $selection.sha256.Substring(0, 12).ToLowerInvariant() + '-' + [Guid]::NewGuid().ToString('N') + '.png')
+    New-Item -ItemType Directory -Path $imageDirectory -Force | Out-Null
+    $installedImage = Join-Path $imageDirectory ('rain-' + $selection.sha256.Substring(0, 12).ToLowerInvariant() + '-' + [Guid]::NewGuid().ToString('N') + '.png')
     Copy-Item -LiteralPath $sourceImage -Destination $installedImage
     if ((Get-ImageHash $installedImage) -ne $selection.sha256) { throw 'Installed image verification failed.' }
     $file = Wait-WinRt ([Windows.Storage.StorageFile]::GetFileFromPathAsync($installedImage)) ([Windows.Storage.StorageFile])
