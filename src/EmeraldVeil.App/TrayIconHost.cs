@@ -9,7 +9,6 @@ internal sealed class TrayIconHost : IDisposable
 {
     private readonly VeilController _controller;
     private readonly StartAtLoginService _startAtLogin;
-    private readonly Action _exitApplication;
     private readonly Forms.NotifyIcon _notifyIcon;
     private readonly Icon _icon;
     private readonly Forms.ToolStripMenuItem _startAtLoginItem;
@@ -17,12 +16,10 @@ internal sealed class TrayIconHost : IDisposable
 
     internal TrayIconHost(
         VeilController controller,
-        StartAtLoginService startAtLogin,
-        Action exitApplication)
+        StartAtLoginService startAtLogin)
     {
         _controller = controller;
         _startAtLogin = startAtLogin;
-        _exitApplication = exitApplication;
 
         _icon = CreateEmeraldIcon();
         _startAtLoginItem = new Forms.ToolStripMenuItem("登录 Windows 时启动")
@@ -36,8 +33,6 @@ internal sealed class TrayIconHost : IDisposable
         var previewItem = new Forms.ToolStripMenuItem("预览原生泡泡（最多 15 秒）");
         previewItem.Click += (_, _) => _controller.RequestPreview();
 
-        var exitItem = new Forms.ToolStripMenuItem("退出屏保（壁纸和副屏继续运行）");
-        exitItem.Click += (_, _) => _exitApplication();
 
         var menu = new Forms.ContextMenuStrip();
         var statusItem = new Forms.ToolStripMenuItem("查看状态与显示范围");
@@ -46,8 +41,6 @@ internal sealed class TrayIconHost : IDisposable
         menu.Items.Add(startNowItem);
         menu.Items.Add(previewItem);
         menu.Items.Add(_startAtLoginItem);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(exitItem);
 
         menu.Opening += (_, _) =>
         {

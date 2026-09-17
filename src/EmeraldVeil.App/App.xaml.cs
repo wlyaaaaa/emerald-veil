@@ -54,6 +54,13 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        // The resident is the sole hotkey owner. Ask Windows to restart this same
+        // executable after an unexpected crash/hang or Restart Manager event; normal
+        // shutdown is not restarted and no second helper/service/task is introduced.
+        int restartRegistration = NativeMethods.RegisterApplicationRestart(commandLine: null, flags: 0);
+        if (restartRegistration < 0)
+            System.Diagnostics.Debug.WriteLine($"RegisterApplicationRestart failed: 0x{restartRegistration:X8}");
+
         // Read-only commands above never reconstruct settings or start a watchdog.
         if (NativeBubblesSettings.IsEnabled()) _ = NativeBubblesSettings.EnsureRuntimePolicy();
         var activationDelay = ReadActivationDelay(e.Args);
@@ -66,7 +73,7 @@ public partial class App : System.Windows.Application
         _controller.SetHotKeyAvailability(
             inputObserverStarted,
             inputObserverStarted ? null : "The existing low-level input observer could not be installed.");
-        _trayIcon = new TrayIconHost(_controller, startAtLogin, Shutdown);
+        _trayIcon = new TrayIconHost(_controller, startAtLogin);
         _commands = new SessionCommandChannel(request => Dispatcher.InvokeAsync(() => HandleCommand(request)).Task);
         _ = WallpaperEngineBackground.RecoverStaleAsync();
         _controller.Start();

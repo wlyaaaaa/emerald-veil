@@ -64,7 +64,7 @@ Project-authored code is released under the [MIT License](LICENSE). `Bubbles.scr
 
 ## 状态与显示范围
 
-泡泡只在已识别的实体桌面屏显示；主屏关闭时保持启用并待命，不转到 VDD 或仪表屏。VDD 的壁纸/Wallpaper Engine 选择不受影响。默认登录即启动、屏保默认启用；产品不提供单独的“暂停本次会话”状态。托盘菜单可查看目标、空闲时间和最近失败；“立即启动屏保”或双击托盘图标会直接进入真正的屏保，`Ctrl+Win+E` 也执行同一动作。退出屏保不会停止壁纸或副屏。
+泡泡只在已识别的实体桌面屏显示；主屏关闭时保持启用并待命，不转到 VDD 或仪表屏。VDD 的壁纸/Wallpaper Engine 选择不受影响。默认登录即启动、屏保默认启用；产品不提供单独的“暂停本次会话”状态，也不在托盘提供“退出驻留程序”入口，因为驻留进程本身就是 `Ctrl+Win+E` 的唯一所有者。托盘菜单可查看目标、空闲时间和最近失败；“立即启动屏保”或双击托盘图标会直接进入真正的屏保，`Ctrl+Win+E` 也执行同一动作。驻留程序还向 Windows 注册应用重启，用于异常崩溃/挂起或 Restart Manager 恢复，不增加第二个服务、任务或守护进程。
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\EmeraldVeil\EmeraldVeil.exe" --status

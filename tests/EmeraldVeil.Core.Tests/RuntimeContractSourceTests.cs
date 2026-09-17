@@ -122,6 +122,9 @@ public sealed class RuntimeContractSourceTests
     {
         string script = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "scripts", "Install-EmeraldVeil.ps1"));
         Assert.Contains("$replacementPerformed -and $hadTarget", script);
+        Assert.Contains("function Test-ResidentState", script);
+        Assert.Contains("hotKeyAvailable", script);
+        Assert.Contains("Expected exactly one interactive Emerald Veil resident", script);
         Assert.Contains("SessionId -eq 0", script);
         Assert.Contains("owner == process.Id", Source("NativeBubblesLauncher.cs"));
     }
@@ -195,6 +198,9 @@ public sealed class RuntimeContractSourceTests
         Assert.DoesNotContain("\"pause\"", app);
         Assert.DoesNotContain("\"resume\"", app);
         Assert.DoesNotContain("暂停本次会话", tray);
+        Assert.DoesNotContain("退出屏保", tray);
+        Assert.Contains("RegisterApplicationRestart", Source("NativeMethods.cs"));
+        Assert.Contains("NativeMethods.RegisterApplicationRestart", app);
     }
 
     private static string FindRepositoryRoot()

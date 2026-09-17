@@ -149,6 +149,9 @@ internal static class NativeMethods
     [DllImport("kernel32.dll")]
     internal static extern uint GetTickCount();
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    internal static extern int RegisterApplicationRestart(string? commandLine, uint flags);
+
     [DllImport("kernel32.dll")]
     internal static extern ulong GetTickCount64();
 

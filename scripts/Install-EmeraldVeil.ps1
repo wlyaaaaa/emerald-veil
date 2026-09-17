@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet('Install', 'Verify', 'Remove')]
     [string]$Action = 'Install',
@@ -111,6 +111,59 @@ function Test-InstalledState {
     }
 }
 
+function Test-ResidentState {
+    $ownedProcesses = @(Get-Process -Name 'EmeraldVeil' -ErrorAction SilentlyContinue | Where-Object {
+        try {
+            $_.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId -and
+                [string]::Equals($_.Path, $targetPath, [System.StringComparison]::OrdinalIgnoreCase)
+        }
+        catch {
+            $false
+        }
+    })
+    if ($ownedProcesses.Count -ne 1) {
+        throw "Expected exactly one interactive Emerald Veil resident; found $($ownedProcesses.Count)."
+    }
+
+    $probeId = [guid]::NewGuid().ToString('N')
+    $stdoutPath = Join-Path $env:TEMP ("EmeraldVeil-status-$probeId.out")
+    $stderrPath = Join-Path $env:TEMP ("EmeraldVeil-status-$probeId.err")
+    try {
+        $probe = Start-Process -FilePath $targetPath -ArgumentList '--status' -WindowStyle Hidden -Wait -PassThru `
+            -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+        $raw = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
+        if ($probe.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($raw)) {
+            $stderr = if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw } else { '' }
+            throw "Emerald Veil resident status command failed with exit code $($probe.ExitCode): $stderr"
+        }
+        try {
+            $status = ($raw | ConvertFrom-Json -Depth 20)
+        }
+        catch {
+            throw "Emerald Veil resident returned invalid status JSON: $($_.Exception.Message)"
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutPath,$stderrPath -Force -ErrorAction SilentlyContinue
+    }
+
+    if ([string]$status.schema -ne 'emerald-veil.status.v1' -or
+        -not [bool]$status.enabled -or
+        -not [bool]$status.hotKeyAvailable -or
+        [string]$status.immediateHotKey -ne 'Ctrl+Win+E') {
+        throw 'Emerald Veil resident status does not satisfy the enabled hotkey contract.'
+    }
+
+    [pscustomobject]@{
+        resident_status = 'healthy'
+        resident_process_id = [int]$ownedProcesses[0].Id
+        resident_version = [string]$status.version
+        enabled = [bool]$status.enabled
+        immediate_hotkey = [string]$status.immediateHotKey
+        hotkey_available = [bool]$status.hotKeyAvailable
+    }
+}
+
 function Stop-OwnedProcess {
     $ownedProcesses = @(Get-Process -Name 'EmeraldVeil' -ErrorAction SilentlyContinue | Where-Object {
         try {
@@ -127,7 +180,16 @@ function Stop-OwnedProcess {
     }
 
     $ownedProcesses | Stop-Process -Force
-    $ownedProcesses | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $remaining = @($ownedProcesses | Where-Object {
+            try { -not $_.HasExited }
+            catch { $false }
+        })
+        if ($remaining.Count -eq 0) { return }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Owned Emerald Veil process did not exit within 5 seconds: $($remaining.Id -join ',')"
 }
 
 function Start-OwnedResident {
@@ -165,7 +227,13 @@ function Remove-OwnedFile {
 
 switch ($Action) {
     'Verify' {
-        Test-InstalledState
+        $installed = Test-InstalledState
+        $resident = Test-ResidentState
+        [pscustomobject]@{
+            status = 'verified'
+            installed = $installed
+            resident = $resident
+        }
         break
     }
 
@@ -224,7 +292,13 @@ switch ($Action) {
 
             Test-InstalledState | Out-Null
             Start-OwnedResident
-            Test-InstalledState
+            $installed = Test-InstalledState
+            $resident = Test-ResidentState
+            [pscustomobject]@{
+                status = 'installed-and-running'
+                installed = $installed
+                resident = $resident
+            }
         }
         catch {
             if ($replacementPerformed -and $hadTarget -and (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
