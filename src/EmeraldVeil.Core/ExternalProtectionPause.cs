@@ -8,6 +8,13 @@ public static class ExternalProtectionPause
 {
     public const string MutexName = @"Local\EmeraldVeil.ExternalProtectionPause";
 
+    public static string ForMonitor(string deviceName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deviceName);
+        return @"Local\EmeraldVeil.Blackout." +
+            string.Concat(deviceName.Where(char.IsLetterOrDigit)).ToUpperInvariant();
+    }
+
     public static bool IsActive(string mutexName = MutexName)
     {
         if (!Mutex.TryOpenExisting(mutexName, out var marker))

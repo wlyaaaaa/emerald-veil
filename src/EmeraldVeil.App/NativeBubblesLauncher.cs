@@ -13,7 +13,7 @@ namespace EmeraldVeil.App;
 /// </summary>
 internal sealed class NativeBubblesLauncher : IDisposable
 {
-    private static readonly TimeSpan InitializationTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan InitializationTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan InitializationPollInterval = TimeSpan.FromMilliseconds(5);
     private static readonly TimeSpan MaintenancePollInterval = TimeSpan.FromMilliseconds(250);
     private static readonly int CurrentSessionId = Process.GetCurrentProcess().SessionId;
@@ -40,6 +40,9 @@ internal sealed class NativeBubblesLauncher : IDisposable
     private Rectangle _physicalBounds;
     private nint _windowHandle;
     private bool _disposed;
+    private string? _lastFailure;
+    internal string? LastFailure => Volatile.Read(ref _lastFailure);
+    internal int? ProcessId { get { lock (_stateLock) { return _process is not null && !HasExited(_process) ? _process.Id : null; } } }
 
     internal bool IsRunning
     {
@@ -78,7 +81,8 @@ internal sealed class NativeBubblesLauncher : IDisposable
             }
 
             windowHandle = _windowHandle;
-            return true;
+            _ = NativeMethods.GetWindowThreadProcessId(windowHandle, out uint owner);
+            return owner == _process.Id && NativeMethods.IsWindowVisible(windowHandle);
         }
     }
 
@@ -99,6 +103,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
         }
 
         Stop();
+        Volatile.Write(ref _lastFailure, null);
 
         Process? process = null;
         SafeFileHandle? jobHandle = null;
@@ -169,11 +174,12 @@ internal sealed class NativeBubblesLauncher : IDisposable
         _ = Start(physicalBounds);
     }
 
-    internal bool WaitForWindowReady(TimeSpan timeout)
+    internal bool WaitForWindowReady(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         var deadline = Stopwatch.StartNew();
         while (deadline.Elapsed < timeout)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (TryGetWindowHandle(out _))
             {
                 return true;
@@ -216,9 +222,10 @@ internal sealed class NativeBubblesLauncher : IDisposable
         // Hiding the owned native window is synchronous and is intentionally
         // first: input must remove visible pixels without waiting for process
         // teardown or a render-thread/driver response.
-        if (windowHandle != nint.Zero)
+        if (windowHandle != nint.Zero && process is not null && !HasExited(process))
         {
-            _ = NativeMethods.ShowWindow(windowHandle, NativeMethods.SwHide);
+            _ = NativeMethods.GetWindowThreadProcessId(windowHandle, out uint owner);
+            if (owner == process.Id) _ = NativeMethods.ShowWindow(windowHandle, NativeMethods.SwHide);
         }
 
         if (cancellation is not null)
@@ -271,15 +278,19 @@ internal sealed class NativeBubblesLauncher : IDisposable
                     Task.Delay(MaintenancePollInterval, cancellationToken)
                         .GetAwaiter()
                         .GetResult();
-                    if (!ApplyOverlayContract(
-                            initializedWindowHandle,
-                            physicalBounds))
+                    bool maintained;
+                    lock (_stateLock)
+                    {
+                        if (!ReferenceEquals(_process, process) || cancellationToken.IsCancellationRequested) break;
+                        maintained = ApplyOverlayContract(initializedWindowHandle, physicalBounds);
+                    }
+                    if (!maintained)
                     {
                         maintenanceFailures++;
                         if (maintenanceFailures >= 8)
                         {
                             throw new InvalidOperationException(
-                                "The native Bubbles window could not recover its overlay contract within two seconds.");
+                                "The native Bubbles window could not recover its overlay contract within two seconds. " + DescribeWindow(initializedWindowHandle, physicalBounds));
                         }
                     }
                     else
@@ -293,29 +304,26 @@ internal sealed class NativeBubblesLauncher : IDisposable
                 var selected = SelectTargetWindow(candidates, physicalBounds);
                 if (selected is not null)
                 {
-                    HideOtherVisibleWindows(candidates, selected.Value.Handle);
-                    if (!ApplyOverlayContract(selected.Value.Handle, physicalBounds))
-                    {
-                        throw new InvalidOperationException(
-                            "The native Bubbles window could not satisfy the overlay contract.");
-                    }
-
-                    initialized = true;
-                    initializedWindowHandle = selected.Value.Handle;
-                    maintenanceFailures = 0;
                     lock (_stateLock)
                     {
-                        if (ReferenceEquals(_process, process))
+                        if (!ReferenceEquals(_process, process) || cancellationToken.IsCancellationRequested) break;
+                        HideOtherVisibleWindows(candidates, selected.Value.Handle);
+                        if (!ApplyOverlayContract(selected.Value.Handle, physicalBounds))
                         {
-                            _windowHandle = selected.Value.Handle;
+                            throw new InvalidOperationException(
+                                "The native Bubbles window could not satisfy the overlay contract.");
                         }
+                        initialized = true;
+                        initializedWindowHandle = selected.Value.Handle;
+                        maintenanceFailures = 0;
+                        _windowHandle = selected.Value.Handle;
                     }
                 }
 
                 if (!initialized && initialization.Elapsed >= InitializationTimeout)
                 {
                     throw new TimeoutException(
-                        "Windows Bubbles did not expose a usable overlay window within two seconds.");
+                        "Windows Bubbles did not expose a usable overlay window within the initialization deadline.");
                 }
 
                 Task.Delay(InitializationPollInterval, cancellationToken)
@@ -328,6 +336,7 @@ internal sealed class NativeBubblesLauncher : IDisposable
         }
         catch (Exception exception)
         {
+            Volatile.Write(ref _lastFailure, exception.Message);
             Debug.WriteLine($"Native Bubbles overlay stopped: {exception}");
             TerminateProcess(process);
         }
@@ -537,11 +546,14 @@ internal sealed class NativeBubblesLauncher : IDisposable
                 new nint(updatedStyles));
         }
 
+        // Bubbles owns the complete glass/background composite. Color-keying
+        // an already black-composited glass sprite creates opaque dark rings.
+        // Keep every native pixel; layering here is only for click-through.
         if (!NativeMethods.SetLayeredWindowAttributes(
                 windowHandle,
                 colorKey: 0,
                 alpha: byte.MaxValue,
-                NativeMethods.LwaColorKey))
+                NativeMethods.LwaAlpha))
         {
             return false;
         }
@@ -574,6 +586,12 @@ internal sealed class NativeBubblesLauncher : IDisposable
             readBackBounds.Bottom == physicalBounds.Bottom;
     }
 
+    private static string DescribeWindow(nint handle, Rectangle expected)
+    {
+        bool readable = NativeMethods.GetWindowRect(handle, out var actual);
+        long styles = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GwlExStyle).ToInt64();
+        return $"boundsReadable={readable}; actual={actual.Left},{actual.Top},{actual.Right},{actual.Bottom}; expected={expected}; styles=0x{styles:X}; win32={Marshal.GetLastPInvokeError()}";
+    }
     private static long GetIntersectionArea(Rectangle first, Rectangle second)
     {
         var intersection = Rectangle.Intersect(first, second);

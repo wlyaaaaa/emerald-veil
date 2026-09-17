@@ -19,3 +19,6 @@ jobs:
       - run: dotnet restore EmeraldVeil.slnx
       - run: dotnet build EmeraldVeil.slnx --configuration Release --no-restore
       - run: dotnet test EmeraldVeil.slnx --configuration Release --no-build
+      - name: Verify reversible native visual profile migration
+        shell: pwsh
+        run: ./scripts/Test-NativeProfileMigration.ps1

@@ -19,6 +19,9 @@ internal sealed class LowLevelInputObserver : IDisposable
     private nint _mouseHook;
     private nint _keyboardHook;
     private bool _disposed;
+    private bool _immediateDisplayChordLatched;
+
+    internal event EventHandler? ImmediateDisplayHotKeyPressed;
 
     internal LowLevelInputObserver(InputActivityFilter filter)
     {
@@ -127,6 +130,23 @@ internal sealed class LowLevelInputObserver : IDisposable
                 var data = Marshal.PtrToStructure<NativeMethods.KeyboardLowLevelHookData>(
                     dataPointer);
                 _filter.ObserveKeyboard(data.Time);
+                int messageId = message.ToInt32();
+                bool keyDown = messageId is NativeMethods.WmKeyDown or NativeMethods.WmSysKeyDown;
+                bool keyUp = messageId is NativeMethods.WmKeyUp or NativeMethods.WmSysKeyUp;
+                if (data.VirtualKey == NativeMethods.VkE && keyDown && NativeMethods.IsImmediateDisplayModifierDown())
+                {
+                    bool firstPress = !_immediateDisplayChordLatched;
+                    _immediateDisplayChordLatched = true;
+                    if (firstPress) ImmediateDisplayHotKeyPressed?.Invoke(this, EventArgs.Empty);
+                    // Ctrl+Win+E belongs to Emerald Veil once the resident observer is active.
+                    // Consume E so an older WM_HOTKEY registration cannot also fire.
+                    return new nint(1);
+                }
+                if (data.VirtualKey == NativeMethods.VkE && keyUp && _immediateDisplayChordLatched)
+                {
+                    _immediateDisplayChordLatched = false;
+                    return new nint(1);
+                }
             }
             catch (Exception exception)
             {

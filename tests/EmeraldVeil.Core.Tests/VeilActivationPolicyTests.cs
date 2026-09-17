@@ -42,14 +42,14 @@ public sealed class VeilActivationPolicyTests
     }
 
     [Fact]
-    public void ExplicitPreviewWorksWhileIdleActivationIsPaused()
+    public void PauseAlsoSuppressesExplicitPreview()
     {
         var result = Policy.Evaluate(
             new IdleObservation(true, TimeSpan.Zero),
             isPaused: true,
             previewRequested: true);
 
-        Assert.Equal(VeilMode.Preview, result);
+        Assert.Equal(VeilMode.Hidden, result);
     }
 
     [Theory]

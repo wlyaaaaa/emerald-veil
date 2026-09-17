@@ -14,6 +14,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ([Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0) {
+    throw 'Run this per-user desktop entry in the signed-in interactive session, not SYSTEM/session 0.'
+}
 
 $desktopPath = 'HKCU:\Control Panel\Desktop'
 $bubblesPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Screensavers\Bubbles'
@@ -196,7 +199,9 @@ function Assert-StateSnapshot {
     $schema = [string]$Snapshot.schema
     if ($schema -notin @(
             'emerald-veil.native-bubbles-preimage.v1',
-            'emerald-veil.native-bubbles-preimage.v2')) {
+            'emerald-veil.native-bubbles-preimage.v2',
+            'emerald-veil.native-bubbles-preimage.v3',
+            'emerald-veil.native-bubbles-preimage.v4')) {
         throw 'Native Bubbles preimage schema is not supported.'
     }
 
@@ -210,8 +215,14 @@ function Assert-StateSnapshot {
         [pscustomobject]@{ path = $approvedPath; name = $legacyValueName }
         [pscustomobject]@{ path = $ownerPath; name = $legacyOwnerName }
     )
-    if ($schema -eq 'emerald-veil.native-bubbles-preimage.v2') {
+    if ($schema -in @('emerald-veil.native-bubbles-preimage.v2','emerald-veil.native-bubbles-preimage.v3','emerald-veil.native-bubbles-preimage.v4')) {
         $expected += [pscustomobject]@{ path = $ownerPath; name = $watchdogEnabledName }
+    }
+    if ($schema -in @('emerald-veil.native-bubbles-preimage.v3','emerald-veil.native-bubbles-preimage.v4')) {
+        $expected += [pscustomobject]@{ path = $bubblesPath; name = 'ShowBubbles' }
+    }
+    if ($schema -eq 'emerald-veil.native-bubbles-preimage.v4') {
+        $expected += [pscustomobject]@{ path = $bubblesPath; name = 'MaterialGlass' }
     }
     $actual = @($Snapshot.registry_values)
     if ($actual.Count -ne $expected.Count) {
@@ -283,7 +294,7 @@ function Assert-StateMatchesSnapshot {
 
 function Get-StateSnapshot {
     [pscustomobject]@{
-        schema = 'emerald-veil.native-bubbles-preimage.v2'
+        schema = 'emerald-veil.native-bubbles-preimage.v4'
         captured_utc = [DateTimeOffset]::UtcNow.ToString('O')
         runtime = [pscustomobject]@{
             active = [EmeraldVeil.NativeScreenSaver]::GetActive()
@@ -296,6 +307,8 @@ function Get-StateSnapshot {
             Get-RegistryValueSnapshot -Path $desktopPath -Name 'ScreenSaveActive'
             Get-RegistryValueSnapshot -Path $desktopPath -Name 'ScreenSaverIsSecure'
             Get-RegistryValueSnapshot -Path $bubblesPath -Name 'Radius'
+            Get-RegistryValueSnapshot -Path $bubblesPath -Name 'ShowBubbles'
+            Get-RegistryValueSnapshot -Path $bubblesPath -Name 'MaterialGlass'
             Get-RegistryValueSnapshot -Path $runPath -Name $legacyValueName
             Get-RegistryValueSnapshot -Path $approvedPath -Name $legacyValueName
             Get-RegistryValueSnapshot -Path $ownerPath -Name $legacyOwnerName
@@ -335,6 +348,29 @@ function Save-DurablePreimage {
     if (Test-Path -LiteralPath $PreimagePath) {
         $existing = Get-Content -LiteralPath $PreimagePath -Raw | ConvertFrom-Json
         Assert-StateSnapshot -Snapshot $existing
+        if ($existing.schema -ne 'emerald-veil.native-bubbles-preimage.v4') {
+            # Preserve every old value. Only newly managed visual profile fields
+            # are captured before first ownership; v1's enabled flag was absent.
+            if ($existing.schema -eq 'emerald-veil.native-bubbles-preimage.v1') {
+                $existing.registry_values += [pscustomobject]@{
+                    path=$ownerPath; name=$watchdogEnabledName; exists=$false; kind=$null; value=$null
+                }
+            }
+            if ($existing.schema -ne 'emerald-veil.native-bubbles-preimage.v3') {
+                $existing.registry_values += Get-RegistryValueSnapshot -Path $bubblesPath -Name 'ShowBubbles'
+            }
+            $existing.registry_values += Get-RegistryValueSnapshot -Path $bubblesPath -Name 'MaterialGlass'
+            $existing.schema = 'emerald-veil.native-bubbles-preimage.v4'
+            Assert-StateSnapshot -Snapshot $existing
+            $original = "$PreimagePath.before-v4"
+            if (-not (Test-Path -LiteralPath $original)) { Copy-Item -LiteralPath $PreimagePath -Destination $original }
+            $upgrade = "$PreimagePath.$([guid]::NewGuid().ToString('N')).tmp"
+            try {
+                [IO.File]::WriteAllText($upgrade, ($existing | ConvertTo-Json -Depth 8), $utf8NoBom)
+                [IO.File]::Move($upgrade, $PreimagePath, $true)
+            }
+            finally { if (Test-Path -LiteralPath $upgrade) { Remove-Item -LiteralPath $upgrade -Force } }
+        }
         return
     }
 
@@ -441,6 +477,7 @@ function Disable-LegacyStartup {
 function Get-OwnedNativeBubblesProcess {
     @(Get-Process -Name 'Bubbles.scr','Bubbles' -ErrorAction SilentlyContinue | Where-Object {
         try {
+            $_.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId -and
             [string]::Equals(
                 [IO.Path]::GetFullPath($_.Path),
                 [IO.Path]::GetFullPath($bubblesExecutable),
@@ -492,6 +529,11 @@ function Set-NativeRegistryConfiguration {
         -PropertyType String -Value '0' -Force | Out-Null
     New-ItemProperty -LiteralPath $desktopPath -Name 'ScreenSaverIsSecure' `
         -PropertyType String -Value '0' -Force | Out-Null
+    # Preserve native glass blending against the selected material, never black-key its pixels.
+    New-ItemProperty -LiteralPath $bubblesPath -Name 'ShowBubbles' `
+        -PropertyType DWord -Value ([uint32]1) -Force | Out-Null
+    New-ItemProperty -LiteralPath $bubblesPath -Name 'MaterialGlass' `
+        -PropertyType DWord -Value ([uint32]1) -Force | Out-Null
     New-ItemProperty -LiteralPath $bubblesPath -Name 'Radius' `
         -PropertyType DWord -Value $radiusDword -Force | Out-Null
     New-ItemProperty -LiteralPath $ownerPath -Name $watchdogEnabledName `
@@ -504,6 +546,8 @@ function Get-NativeBubblesStatus {
     $activeEntry = Get-RegistryValueSnapshot -Path $desktopPath -Name 'ScreenSaveActive'
     $secureEntry = Get-RegistryValueSnapshot -Path $desktopPath -Name 'ScreenSaverIsSecure'
     $radiusEntry = Get-RegistryValueSnapshot -Path $bubblesPath -Name 'Radius'
+    $backgroundEntry = Get-RegistryValueSnapshot -Path $bubblesPath -Name 'ShowBubbles'
+    $glassEntry = Get-RegistryValueSnapshot -Path $bubblesPath -Name 'MaterialGlass'
     $watchdogEntry = Get-RegistryValueSnapshot -Path $ownerPath -Name $watchdogEnabledName
     $screenSaver = [string]$screenSaverEntry.value
     $timeout = [string]$timeoutEntry.value
@@ -520,6 +564,12 @@ function Get-NativeBubblesStatus {
     $secureRuntime = [EmeraldVeil.NativeScreenSaver]::GetSecure()
 
     $problems = [Collections.Generic.List[string]]::new()
+    if (-not $backgroundEntry.exists -or $backgroundEntry.kind -ne 'DWord' -or [uint32]$backgroundEntry.value -ne 1) {
+        $problems.Add('Native Bubbles must retain its original background composite; a black keyed background destroys glass transparency.')
+    }
+    if (-not $glassEntry.exists -or $glassEntry.kind -ne 'DWord' -or [uint32]$glassEntry.value -ne 1) {
+        $problems.Add('Native Bubbles must use its original glass material.')
+    }
     if (-not (Test-Path -LiteralPath $bubblesExecutable -PathType Leaf)) {
         $problems.Add("Missing native screen saver: $bubblesExecutable")
     }
@@ -532,10 +582,9 @@ function Get-NativeBubblesStatus {
             [StringComparison]::OrdinalIgnoreCase)) {
         $problems.Add('SCRNSAVE.EXE does not point to the native Bubbles screen saver.')
     }
-    $runtimeTimeoutMatches = $timeoutRuntime -eq $timeoutSeconds -or
-        (-not $activeRuntime -and $timeoutRuntime -eq 0)
+    $runtimeTimeoutMatches = $timeoutRuntime -eq $timeoutSeconds -or (-not $activeRuntime -and $timeoutRuntime -eq 0)
     if ($timeout -ne [string]$timeoutSeconds -or -not $runtimeTimeoutMatches) {
-        $problems.Add("Screen saver timeout is not $timeoutSeconds seconds in the registry, or its active runtime value is not $timeoutSeconds.")
+        $problems.Add("Persisted timeout is not $timeoutSeconds seconds, or its active runtime value is inconsistent.")
     }
     if (-not $timeoutEntry.exists -or $timeoutEntry.kind -ne 'String') {
         $problems.Add('ScreenSaveTimeOut is not present as REG_SZ.')
@@ -586,6 +635,11 @@ function Get-NativeBubblesStatus {
         status = 'enabled'
         screen_saver = $bubblesExecutable
         render_mode = 'native_full_size_overlay'
+        native_background = 'windows-native-glass-composite'
+        background_playback = 'native-entry-snapshot'
+        material_glass = 1
+        color_key_enabled = $false
+        background_source = 'VDD: existing Wallpaper Engine renderer selection, otherwise Windows wallpaper'
         windows_fullscreen_trigger = $false
         timeout_seconds = [int]$timeout
         runtime_timeout_seconds = [int]$timeoutRuntime
@@ -646,31 +700,26 @@ switch ($Action) {
     }
 
     'Disable' {
-        $operationPreimage = Get-StateSnapshot
-        try {
-            if (-not (Test-Path -LiteralPath $desktopPath)) {
-                throw 'The desktop configuration key is missing.'
-            }
-            Stop-NativeBubblesProcess
-            if (-not (Test-Path -LiteralPath $ownerPath)) {
-                New-Item -Path $ownerPath | Out-Null
-            }
-            New-ItemProperty -LiteralPath $ownerPath -Name $watchdogEnabledName `
-                -PropertyType DWord -Value ([uint32]0) -Force | Out-Null
-            New-ItemProperty -LiteralPath $desktopPath -Name 'ScreenSaveActive' `
-                -PropertyType String -Value '0' -Force | Out-Null
-            [EmeraldVeil.NativeScreenSaver]::SetState(
-                $false,
-                [EmeraldVeil.NativeScreenSaver]::GetTimeout(),
-                [EmeraldVeil.NativeScreenSaver]::GetSecure(),
-                $true
-            )
-            Get-NativeBubblesDisabledStatus
+        # Emergency stop must first prevent a competing idle relaunch. If native
+        # cleanup fails, retain the disabled flag rather than re-enabling it.
+        if (-not (Test-Path -LiteralPath $desktopPath)) {
+            throw 'The desktop configuration key is missing.'
         }
-        catch {
-            Restore-StateSnapshot -Snapshot $operationPreimage
-            throw
+        if (-not (Test-Path -LiteralPath $ownerPath)) {
+            New-Item -Path $ownerPath | Out-Null
         }
+        New-ItemProperty -LiteralPath $ownerPath -Name $watchdogEnabledName `
+            -PropertyType DWord -Value ([uint32]0) -Force | Out-Null
+        New-ItemProperty -LiteralPath $desktopPath -Name 'ScreenSaveActive' `
+            -PropertyType String -Value '0' -Force | Out-Null
+        [EmeraldVeil.NativeScreenSaver]::SetState(
+            $false,
+            [EmeraldVeil.NativeScreenSaver]::GetTimeout(),
+            [EmeraldVeil.NativeScreenSaver]::GetSecure(),
+            $true
+        )
+        Stop-NativeBubblesProcess
+        Get-NativeBubblesDisabledStatus
         break
     }
 

@@ -6,9 +6,9 @@ Emerald Veil is a small, reversible Windows-native Bubbles overlay for OLED idle
 
 The selected background is the project-owned `assets/verdant-rain-4k.png` (3840×2160), shared with the native Windows background selection, embedded in the installed watchdog, and rendered as a full-size click-through layer beneath native Bubbles. While visible, the watchdog keeps that layer immediately below the native Bubbles HWND so Wallpaper Engine cannot be inserted between them. The watchdog does not capture the desktop or depend on the Windows/Wallpaper Engine wallpaper owner.
 
-Before every native Bubbles launch or display-topology restart, the watchdog temporarily pauses a uniquely identified Wallpaper Engine renderer when one is present, waits for the project background to complete WPF rendering and one DWM composition pass, establishes the native Bubbles HWND contract, and immediately resumes Wallpaper Engine without changing its configuration. While resident, it also checks the persisted 360-second setting and the Windows runtime screen-saver active/timeout/secure policy every 30 seconds and repairs drift in place. On Windows 11 builds that expose an effective runtime timeout of 0 while the automatic trigger is disabled, that 0 is accepted only with active=false; the watchdog's own six-minute timeline remains authoritative. GPU resets and sign-in reconstruction therefore cannot silently replace the project background capture or leave the six-minute policy stale.
+The watchdog composes its own background before native initialization and never stops, pauses or replays Wallpaper Engine. Failures use bounded cooldown and suspension rather than repeated wallpaper takeovers. Only positively identified physical desktop screens are eligible; VDD, instrument screens and unknown identities are excluded. With the physical screen off, the enabled app keeps measuring idle but draws nothing. Windows runtime timeout/active/secure settings are checked every 30 seconds.
 
-The installed WinExe is a quiet user-session watchdog. It samples `GetLastInputInfo` and uses one narrow in-memory classifier to ignore a `WM_MOUSEMOVE` whose point has not changed at all. It also keeps one isolated injected nonzero move from resetting the idle clock; the event is still delivered normally, and a second injected move within 250 ms confirms real remote movement and becomes activity. A new raw input tick without a matching hook classification is held for one 50 ms sample so a no-op classification arriving just behind the poll cannot become permanent activity; an unclassified or valid tick is accepted on the next sample. The watchdog manually starts `Bubbles.scr /s`, finds the exact child process window, turns black background pixels transparent, and makes that window topmost, non-activating, and click-through. Windows' own automatic screen-saver and lock trigger remains disabled. No screenshot, checkerboard, replacement background, custom bubble renderer, network, telemetry, scheduled task, PowerShell wrapper, event log, or product-name allowlist is used.
+The installed WinExe is a quiet user-session watchdog. It samples `GetLastInputInfo` and uses one narrow in-memory classifier to ignore a `WM_MOUSEMOVE` whose point has not changed at all. It also keeps one isolated injected nonzero move from resetting the idle clock; the event is still delivered normally, and a second injected move within 250 ms confirms real remote movement and becomes activity. A new raw input tick without a matching hook classification is held for one 50 ms sample so a no-op classification arriving just behind the poll cannot become permanent activity; an unclassified or valid tick is accepted on the next sample. The watchdog manually starts `Bubbles.scr /s`, finds the exact child-process window, retains the native glass/background composite at full opacity, and makes that window topmost, non-activating, and click-through. It never color-keys black native pixels. Windows' own automatic screen-saver trigger remains disabled because this app owns the six-minute trigger. No continuous VDD capture, checkerboard, custom bubble renderer, network listener, telemetry, scheduled task, PowerShell watchdog, event log, or product-name allowlist is used.
 
 Startup is deliberately per-user through a direct `HKCU\...\Run` WinExe entry. It must not run as `SYSTEM`: Session 0 cannot draw on the signed-in user's desktop. A crash-safe, cross-process session lease refuses a second renderer without killing or taking over an existing one. Every owned renderer is also assigned to a kill-on-close Windows Job Object, so input, Disable, watchdog exit, crash, or restart cannot leave an old Bubbles instance to overlap the next one.
 
@@ -52,7 +52,7 @@ pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Remove
 pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Restore
 ```
 
-`Disable` is the fast-off path. It stops any Windows Bubbles process at the exact system path, clears the project-owned enabled flag, and keeps Windows' automatic trigger off. `Remove` is the complete uninstall path. A later `Enable` reuses the same six-minute profile.
+`Disable` first clears the project-owned enabled flag and keeps Windows' automatic trigger off, then stops matching system-path Bubbles processes in the current user session. Cleanup failure does not automatically re-enable it. `Remove` is the complete uninstall path. A later `Enable` reuses the same six-minute profile.
 
 The first `Enable` stores its rollback record at `%LOCALAPPDATA%\EmeraldVeil\native-bubbles-preimage.json`. Repeated enables do not overwrite it. The record is machine-specific and must not be published.
 
@@ -61,3 +61,15 @@ See [the product design](docs/product-design.md) for the window contract, config
 ## License
 
 Project-authored code is released under the [MIT License](LICENSE). `Bubbles.scr` and its visuals remain Windows components under Microsoft's terms.
+
+## 状态与显示范围
+
+泡泡只在已识别的实体桌面屏显示；主屏关闭时保持启用并待命，不转到 VDD 或仪表屏。VDD 的静态底图不受影响。默认登录即启动、屏保默认启用、会话默认不暂停。托盘菜单可查看目标、空闲时间和最近失败；“立即启动屏保”或双击托盘图标会直接进入真正的屏保，`Ctrl+Win+E` 也执行同一动作。退出屏保不会停止壁纸或副屏。
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\EmeraldVeil\EmeraldVeil.exe" --status
+& "$env:LOCALAPPDATA\Programs\EmeraldVeil\EmeraldVeil.exe" --pause
+& "$env:LOCALAPPDATA\Programs\EmeraldVeil\EmeraldVeil.exe" --resume
+```
+
+状态命令不会启动缺失的屏保；重复打开已运行的程序不会强制预览。`Ctrl+Win+E` 使用现有低级键盘观察器触发，不新建服务或第二套全局热键注册；组合键本身会被消费，所有按键释放并稳定约 250 ms 后才建立屏保输入基线，避免松键把刚启动的屏保立即退出。预览最多 15 秒；真正屏保一直显示到正常输入、暂停或禁用。实体屏动画、真实远程画面和自然开机属于单独验收，不从进程存在推断。

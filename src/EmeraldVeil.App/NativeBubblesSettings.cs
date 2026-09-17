@@ -16,6 +16,19 @@ internal static class NativeBubblesSettings
         return key?.GetValue(EnabledValueName) is int value && value == 1;
     }
 
+    internal static void EnsureVisualProfile()
+    {
+        // Enable captured these original values before project ownership. Keep
+        // the native glass/background composite exact at every presentation.
+        using var key = Registry.CurrentUser.CreateSubKey(
+            @"Software\Microsoft\Windows\CurrentVersion\Screensavers\Bubbles");
+        foreach (string name in new[] { "ShowBubbles", "MaterialGlass" })
+        {
+            if (key.GetValue(name) is not int value || value != 1 ||
+                key.GetValueKind(name) != RegistryValueKind.DWord)
+                key.SetValue(name, 1, RegistryValueKind.DWord);
+        }
+    }
     internal static bool EnsureRuntimePolicy()
     {
         if (!IsEnabled())

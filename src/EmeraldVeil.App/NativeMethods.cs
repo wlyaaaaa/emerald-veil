@@ -22,6 +22,14 @@ internal static class NativeMethods
     internal const int WmMouseActivate = 0x0021;
     internal const int WmDisplayChange = 0x007E;
     internal const int WmDpiChanged = 0x02E0;
+    internal const int WmKeyDown = 0x0100;
+    internal const int WmKeyUp = 0x0101;
+    internal const int WmSysKeyDown = 0x0104;
+    internal const int WmSysKeyUp = 0x0105;
+    internal const int VkControl = 0x11;
+    internal const int VkE = 0x45;
+    internal const int VkLeftWin = 0x5B;
+    internal const int VkRightWin = 0x5C;
     internal const int HtTransparent = -1;
     internal const int MaNoActivate = 3;
     internal const int WhKeyboardLl = 13;
@@ -29,7 +37,7 @@ internal static class NativeMethods
 
     internal const uint SwpNoActivate = 0x0010;
     internal const uint SwpShowWindow = 0x0040;
-    internal const uint LwaColorKey = 0x0000_0001;
+    internal const uint LwaAlpha = 0x0000_0002;
     internal const int SwHide = 0;
     internal const uint JobObjectLimitKillOnJobClose = 0x0000_2000;
     internal const int JobObjectExtendedLimitInformationClass = 9;
@@ -213,6 +221,9 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ShowWindow(nint windowHandle, int command);
 
+    [DllImport("user32.dll")]
+    internal static extern short GetAsyncKeyState(int virtualKey);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetLayeredWindowAttributes(
@@ -246,6 +257,15 @@ internal static class NativeMethods
     internal static extern bool AssignProcessToJobObject(
         SafeFileHandle jobHandle,
         nint processHandle);
+
+
+    internal static bool AreImmediateDisplayChordKeysHeld() =>
+        IsKeyDown(VkControl) || IsKeyDown(VkE) || IsKeyDown(VkLeftWin) || IsKeyDown(VkRightWin);
+
+    internal static bool IsImmediateDisplayModifierDown() =>
+        IsKeyDown(VkControl) && (IsKeyDown(VkLeftWin) || IsKeyDown(VkRightWin));
+
+    private static bool IsKeyDown(int virtualKey) => (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 
     internal static nint GetWindowLongPtr(nint windowHandle, int index) =>
         nint.Size == 8

@@ -29,7 +29,7 @@ public sealed class VeilActivationPolicy
         bool previewRequested,
         bool externalProtectionActive = false)
     {
-        if (externalProtectionActive)
+        if (externalProtectionActive || isPaused || !observation.IsReliable)
         {
             return VeilMode.Hidden;
         }
@@ -37,11 +37,6 @@ public sealed class VeilActivationPolicy
         if (previewRequested)
         {
             return VeilMode.Preview;
-        }
-
-        if (isPaused || !observation.IsReliable)
-        {
-            return VeilMode.Hidden;
         }
 
         return observation.IdleDuration >= ActivationDelay

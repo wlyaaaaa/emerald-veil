@@ -1,42 +1,53 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Forms = System.Windows.Forms;
+using EmeraldVeil.Core;
 
 namespace EmeraldVeil.App;
 
 internal sealed class VeilWindow : Window, IDisposable
 {
-    private static readonly TimeSpan LayerMaintenanceInterval =
-        TimeSpan.FromMilliseconds(100);
-    private static readonly TimeSpan NativeWindowReadyTimeout =
-        TimeSpan.FromMilliseconds(2250);
-    private static readonly TimeSpan WallpaperStopSettleDelay =
-        TimeSpan.FromSeconds(2);
-
+    private static readonly TimeSpan LayerMaintenanceInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan NativeWindowReadyTimeout = TimeSpan.FromSeconds(6);
     private readonly VeilSurface _surface = new();
     private readonly NativeBubblesLauncher _nativeBubbles = new();
+    private readonly LaunchRecoveryPolicy _recovery = new();
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly DispatcherTimer _layerMaintenanceTimer;
     private readonly nint _windowHandle;
     private readonly HwndSource _windowSource;
     private bool _allowClose;
     private bool _disposed;
-    private bool _launchInProgress;
+    private volatile bool _launchInProgress;
+    private volatile bool _veilVisible;
     private CancellationTokenSource? _launchCancellation;
+    private VeilDisplay? _activeTarget;
+    private VeilDisplay? _lastTarget;
+    private TimeSpan _shownAt;
+    private TimeSpan _nextTargetCheck;
+    private string _state = "waiting-for-idle";
+    private string? _lastFailure;
+    private int _launchCount;
+    private int _failureCount;
+    private VddBackground? _backgroundSource;
+    private VddBackground? _lastBackgroundSource;
+    private string? _lastBackgroundKind;
+    private WallpaperEngineBackground? _engineBackground;
+    private string? _backgroundError;
+    private bool _backgroundRefreshInProgress;
+    private TimeSpan _nextBackgroundCheck;
+    private int _backgroundGeneration;
+    private readonly List<Task> _backgroundCloses = new();
 
     internal VeilWindow()
     {
         Title = "Emerald Veil";
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
-        // The background must contribute real pixels above any wallpaper
-        // compositor. A transparent WPF window can remain present in the
-        // desktop z-order while contributing no visible surface at all.
-        // Keep input pass-through in the native hook below, but use an opaque
-        // window so the embedded image is the actual visual background.
         AllowsTransparency = false;
         Background = System.Windows.Media.Brushes.Black;
         Topmost = true;
@@ -45,160 +56,238 @@ internal sealed class VeilWindow : Window, IDisposable
         WindowStartupLocation = WindowStartupLocation.Manual;
         Left = -32_000;
         Top = -32_000;
-        Width = 1;
-        Height = 1;
+        Width = Height = 1;
         Opacity = 0;
         Content = _surface;
-
         _windowHandle = new WindowInteropHelper(this).EnsureHandle();
         _windowSource = HwndSource.FromHwnd(_windowHandle)
-            ?? throw new InvalidOperationException("Unable to attach to the veil window handle.");
+            ?? throw new InvalidOperationException("Unable to attach the background window.");
         _windowSource.AddHook(WindowMessageHook);
         ApplyExtendedWindowStyles();
-
-        _layerMaintenanceTimer = new DispatcherTimer(
-            LayerMaintenanceInterval,
-            DispatcherPriority.Send,
-            (_, _) => MaintainBackgroundPlacement(),
-            Dispatcher);
+        _layerMaintenanceTimer = new DispatcherTimer(LayerMaintenanceInterval, DispatcherPriority.Normal,
+            (_, _) => MaintainBackgroundPlacement(), Dispatcher);
         _layerMaintenanceTimer.Stop();
     }
 
-    internal bool IsVeilVisible => _nativeBubbles.IsRunning;
+    // Snapshots are safe for the idle thread, without cross-thread WPF property access.
+    internal bool IsVeilVisible => _veilVisible;
+    internal bool IsPresentationActive => _veilVisible || _launchInProgress;
 
-    internal void ShowVeil(bool force = false)
+    internal object ReadStatus() => new
     {
-        ThrowIfDisposed();
+        state = _state,
+        visualMode = "windows-native-glass-composite",
+        backgroundPlayback = "native-entry-snapshot",
+        displayPolicy = "physical-desktop-only",
+        eligibleTarget = DisplayTargetResolver.Resolve()?.DeviceName,
+        visible = _veilVisible && (_engineBackground?.IsAlive == true || IsVisible) && _nativeBubbles.TryGetWindowHandle(out _),
+        initializing = _launchInProgress,
+        target = _activeTarget?.DeviceName ?? _lastTarget?.DeviceName,
+        bounds = _activeTarget?.Bounds,
+        nativeProcessId = _nativeBubbles.ProcessId,
+        launchCount = _launchCount,
+        failureCount = _failureCount,
+        consecutiveFailures = _recovery.FailureCount,
+        automaticRetrySuspended = _recovery.IsSuspended,
+        retryAfterSeconds = _recovery.IsSuspended ? (double?)null :
+            Math.Max(0, (_recovery.NextAttempt - _clock.Elapsed).TotalSeconds),
+        lastFailure = _lastFailure,
+        background = new {
+            active = _veilVisible,
+            kind = _lastBackgroundKind,
+            sourceMonitor = (_backgroundSource ?? _lastBackgroundSource)?.MonitorId,
+            sourceFile = (_backgroundSource ?? _lastBackgroundSource)?.Selection?.File ?? (_backgroundSource ?? _lastBackgroundSource)?.Image,
+            window = _engineBackground?.WindowName,
+            fallbackReason = _backgroundError,
+        },
+    };
 
-        // Tray preview is explicit. Automatic activation uses the project-owned
-        // setting because Windows' own screen-saver trigger stays off.
-        if (!force && !NativeBubblesSettings.IsEnabled())
+    internal void ResetRecovery() => _recovery.Reset();
+
+    internal void ShowVeil()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!NativeBubblesSettings.IsEnabled())
         {
+            _state = "disabled";
             return;
         }
-
-        if (_nativeBubbles.IsRunning || _launchInProgress)
+        if (IsPresentationActive || _backgroundRefreshInProgress) return;
+        var target = DisplayTargetResolver.Resolve();
+        if (target != _lastTarget)
         {
+            _lastTarget = target;
+            _recovery.Reset();
+        }
+        if (target is null)
+        {
+            _state = "no-eligible-physical-display";
             return;
         }
-
+        if (!_recovery.CanAttempt(_clock.Elapsed))
+        {
+            _state = _recovery.IsSuspended ? "waiting-for-input-or-manual-retry" : "retry-cooldown";
+            return;
+        }
+        _activeTarget = target;
         _launchInProgress = true;
+        _state = "initializing";
+        _launchCount++;
         _launchCancellation = new CancellationTokenSource();
-        _ = ShowVeilAsync(_launchCancellation);
+        _ = ShowVeilAsync(target, _launchCancellation);
     }
 
-    private async Task ShowVeilAsync(CancellationTokenSource launchCancellation)
+    private async Task ShowVeilAsync(VeilDisplay target, CancellationTokenSource cancellation)
     {
-        WallpaperEngineQuiescence? wallpaper = null;
+        var token = cancellation.Token;
         try
         {
-            wallpaper = WallpaperEngineQuiescence.PauseIfRunning();
-            if (wallpaper is not null)
-            {
-                await Task.Delay(
-                    WallpaperStopSettleDelay,
-                    launchCancellation.Token);
-            }
-
-            launchCancellation.Token.ThrowIfCancellationRequested();
-            var targetBounds = GetTargetBounds();
-            ShowBackground(targetBounds);
-            WaitForBackgroundComposition();
-            var started = _nativeBubbles.Start(targetBounds);
-            if (!started && !_nativeBubbles.IsRunning)
-            {
-                HideBackground();
-            }
-            else if (started && !await Task.Run(
-                () => _nativeBubbles.WaitForWindowReady(NativeWindowReadyTimeout),
-                launchCancellation.Token))
-            {
-                throw new TimeoutException(
-                    "Native Bubbles did not establish its overlay window before Wallpaper resumed.");
-            }
+            NativeBubblesSettings.EnsureVisualProfile();
+            await UpdateBackgroundAsync(target, token);
+            // Bubbles takes its own desktop snapshot. Finish the selected VDD
+            // material on the physical target before starting the native child.
+            await Dispatcher.InvokeAsync(() => _surface.InvalidateVisual(), DispatcherPriority.Render, token);
+            await Task.Delay(50, token);
+            int compositionResult = NativeMethods.DwmFlush();
+            if (compositionResult < 0) Marshal.ThrowExceptionForHR(compositionResult);
+            token.ThrowIfCancellationRequested();
+            if (!_nativeBubbles.Start(target.Bounds))
+                throw new InvalidOperationException("Another native Bubbles instance owns this session.");
+            bool ready = await Task.Run(() => _nativeBubbles.WaitForWindowReady(NativeWindowReadyTimeout, token), token);
+            token.ThrowIfCancellationRequested();
+            if (!ready) throw new InvalidOperationException(_nativeBubbles.LastFailure ?? "Native Bubbles did not establish a usable window.");
+            if (DisplayTargetResolver.Resolve() != target) throw new OperationCanceledException("The target changed during initialization.");
+            _veilVisible = true;
+            _shownAt = _clock.Elapsed;
+            _state = "visible";
+            _layerMaintenanceTimer.Start();
+            MaintainBackgroundPlacement();
         }
-        catch (OperationCanceledException) when (launchCancellation.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            HideBackground();
+            if (ReferenceEquals(_launchCancellation, cancellation)) { CleanupLayers(); _state = "waiting-for-idle"; }
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            HideBackground();
+            if (ReferenceEquals(_launchCancellation, cancellation)) RecordFailure(exception.Message);
         }
-        finally
-        {
-            try
-            {
-                wallpaper?.Dispose();
-            }
-            catch (Exception)
-            {
-                HideBackground();
-            }
-            if (ReferenceEquals(_launchCancellation, launchCancellation))
-            {
-                _launchCancellation = null;
-            }
-
-            launchCancellation.Dispose();
-            _launchInProgress = false;
-        }
+        finally { _launchInProgress = false; }
     }
 
-    private void WaitForBackgroundComposition()
+    private async Task UpdateBackgroundAsync(VeilDisplay target, CancellationToken token)
     {
-        _surface.UpdateLayout();
-        Dispatcher.Invoke(
-            static () => { },
-            DispatcherPriority.Render);
-        int result = NativeMethods.DwmFlush();
-        if (result < 0)
+        if (_backgroundRefreshInProgress) return;
+        _backgroundRefreshInProgress = true;
+        int generation = _backgroundGeneration;
+        WallpaperEngineBackground? next = null;
+        try
         {
-            Marshal.ThrowExceptionForHR(result);
+            var source = VddBackgroundSource.Read();
+            if (source == _backgroundSource && (_engineBackground is null || _engineBackground.IsAlive)) return;
+            _surface.Load(source);
+            string? error = null;
+            if (source.Selection is not null)
+            {
+                next = new WallpaperEngineBackground(source);
+                try { await next.OpenAsync(_windowHandle, target.Bounds, token); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception exception) { error = exception.Message; CloseBackground(next); next = null; }
+            }
+            token.ThrowIfCancellationRequested();
+            if (generation != _backgroundGeneration) throw new OperationCanceledException(token);
+            ShowBackground(target.Bounds);
+            if (next is not null)
+            {
+                next.UpdateSize(target.Bounds);
+            }
+            var previous = _engineBackground;
+            _engineBackground = next;
+            next = null;
+            _backgroundSource = source;
+            _lastBackgroundSource = source;
+            _lastBackgroundKind = _engineBackground is null ? "windows-vdd" : "wallpaper-engine-vdd";
+            _backgroundError = error;
+            CloseBackground(previous);
         }
+        finally { CloseBackground(next); _backgroundRefreshInProgress = false; }
+    }
+
+    private void CloseBackground(WallpaperEngineBackground? background)
+    {
+        if (background is null) return;
+        background.Dispose();
+        _backgroundCloses.RemoveAll(task => task.IsCompleted);
+        _backgroundCloses.Add(background.Closed);
+    }
+
+    private async Task RefreshBackgroundAsync(VeilDisplay target, CancellationToken token)
+    {
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            // Only a real selected material/engine-state change recaptures the
+            // native background. A polling tick never restarts the presentation.
+            var source = VddBackgroundSource.Read();
+            if (source != _backgroundSource && !token.IsCancellationRequested)
+            {
+                HideVeil();
+                _state = "background-source-changed";
+            }
+            await Task.CompletedTask;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { if (!token.IsCancellationRequested) _backgroundError = exception.Message; }
+    }
+
+    private void RecordFailure(string reason)
+    {
+        CleanupLayers();
+        _lastFailure = reason;
+        _failureCount++;
+        _recovery.RecordFailure(_clock.Elapsed);
+        _state = _recovery.IsSuspended ? "waiting-for-input-or-manual-retry" : "retry-cooldown";
     }
 
     internal void HideVeil()
     {
-        if (_disposed)
-        {
-            return;
-        }
+        if (_disposed) return;
+        CleanupLayers();
+        _recovery.Reset();
+        _state = "waiting-for-idle";
+    }
 
+    private void CleanupLayers()
+    {
+        _backgroundGeneration++;
         _launchCancellation?.Cancel();
+        _launchCancellation?.Dispose();
+        _launchCancellation = null;
+        _veilVisible = false;
+        _layerMaintenanceTimer.Stop();
+        Opacity = 0;
+        _surface.StopAnimation();
+        if (IsVisible) Hide();
+        _activeTarget = null;
+        CloseBackground(_engineBackground);
+        _engineBackground = null;
+        _backgroundSource = null;
+        // Input removes the owned background before any native process teardown.
         _nativeBubbles.Stop();
-        HideBackground();
     }
 
     internal NativeMethods.Rect ReadPhysicalBounds()
     {
-        if (_nativeBubbles.TryGetBounds(out var hostBounds))
-        {
-            return new NativeMethods.Rect
-            {
-                Left = hostBounds.Left,
-                Top = hostBounds.Top,
-                Right = hostBounds.Right,
-                Bottom = hostBounds.Bottom,
-            };
-        }
-
         _ = NativeMethods.GetWindowRect(_windowHandle, out var bounds);
         return bounds;
     }
 
     public void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
+        if (_disposed) return;
+        HideVeil();
         _disposed = true;
-        _launchCancellation?.Cancel();
-        _layerMaintenanceTimer.Stop();
         _nativeBubbles.Dispose();
-        _surface.StopAnimation();
+        try { Task.WhenAll(_backgroundCloses).Wait(TimeSpan.FromSeconds(4)); } catch { }
         _windowSource.RemoveHook(WindowMessageHook);
         _allowClose = true;
         Close();
@@ -206,31 +295,15 @@ internal sealed class VeilWindow : Window, IDisposable
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (!_allowClose)
-        {
-            e.Cancel = true;
-            HideVeil();
-            return;
-        }
-
+        if (!_allowClose) { e.Cancel = true; HideVeil(); return; }
         base.OnClosing(e);
     }
 
     private void ApplyExtendedWindowStyles()
     {
-        var current = NativeMethods.GetWindowLongPtr(_windowHandle, NativeMethods.GwlExStyle).ToInt64();
-        var updated = current
-            | NativeMethods.WsExTransparent
-            | NativeMethods.WsExNoActivate
-            | NativeMethods.WsExToolWindow;
-        NativeMethods.SetWindowLongPtr(_windowHandle, NativeMethods.GwlExStyle, new nint(updated));
-    }
-
-    private static System.Drawing.Rectangle GetTargetBounds()
-    {
-        var target = Forms.Screen.PrimaryScreen
-            ?? throw new InvalidOperationException("No primary display is available.");
-        return target.Bounds;
+        long current = NativeMethods.GetWindowLongPtr(_windowHandle, NativeMethods.GwlExStyle).ToInt64();
+        NativeMethods.SetWindowLongPtr(_windowHandle, NativeMethods.GwlExStyle,
+            new nint(current | NativeMethods.WsExTransparent | NativeMethods.WsExNoActivate | NativeMethods.WsExToolWindow));
     }
 
     private void ShowBackground(System.Drawing.Rectangle physicalBounds)
@@ -241,98 +314,67 @@ internal sealed class VeilWindow : Window, IDisposable
         Left = physicalBounds.Left / dpi.DpiScaleX;
         Top = physicalBounds.Top / dpi.DpiScaleY;
         Opacity = 1;
-
-        if (!IsVisible)
-        {
-            Show();
-        }
-
-        if (!NativeMethods.SetWindowPos(
-                _windowHandle,
-                NativeMethods.HwndTopmost,
-                physicalBounds.Left,
-                physicalBounds.Top,
-                physicalBounds.Width,
-                physicalBounds.Height,
-                NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow))
-        {
-            throw new Win32Exception(
-                Marshal.GetLastPInvokeError(),
-                "Unable to place the Emerald Veil background layer.");
-        }
-
+        if (!IsVisible) Show();
+        PlaceBackground(NativeMethods.HwndTopmost, physicalBounds);
         _surface.StartAnimation();
+        _nextTargetCheck = _clock.Elapsed;
         _layerMaintenanceTimer.Start();
-        MaintainBackgroundPlacement();
     }
 
-    private void HideBackground()
+    private void PlaceBackground(nint insertAfter, System.Drawing.Rectangle bounds)
     {
-        _layerMaintenanceTimer.Stop();
-        Opacity = 0;
-        _surface.StopAnimation();
-        if (IsVisible)
-        {
-            Hide();
-        }
+        if (!NativeMethods.SetWindowPos(_windowHandle, insertAfter, bounds.Left, bounds.Top,
+                bounds.Width, bounds.Height, NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow))
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "Unable to place the background layer.");
     }
 
     private void MaintainBackgroundPlacement()
     {
-        if (_disposed || !IsVisible)
+        if (_disposed || _launchInProgress || !_veilVisible || _activeTarget is null) return;
+        try
         {
-            return;
-        }
-
-        var targetBounds = GetTargetBounds();
-        nint insertAfter = _nativeBubbles.TryGetWindowHandle(out var bubblesWindow)
-            ? bubblesWindow
-            : NativeMethods.HwndTopmost;
-        _ = NativeMethods.SetWindowPos(
-            _windowHandle,
-            insertAfter,
-            targetBounds.Left,
-            targetBounds.Top,
-            targetBounds.Width,
-            targetBounds.Height,
-            NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow);
-    }
-
-    private nint WindowMessageHook(
-        nint windowHandle,
-        int message,
-        nint wParam,
-        nint lParam,
-        ref bool handled)
-    {
-        switch (message)
-        {
-            case NativeMethods.WmNchittest:
-                handled = true;
-                return new nint(NativeMethods.HtTransparent);
-
-            case NativeMethods.WmMouseActivate:
-                handled = true;
-                return new nint(NativeMethods.MaNoActivate);
-
-            case NativeMethods.WmDisplayChange:
-            case NativeMethods.WmDpiChanged:
-                if (IsVeilVisible)
+            if (_clock.Elapsed >= _nextTargetCheck)
+            {
+                _nextTargetCheck = _clock.Elapsed + TimeSpan.FromMilliseconds(500);
+                if (DisplayTargetResolver.Resolve() != _activeTarget)
                 {
-                    _ = Dispatcher.BeginInvoke(() =>
-                    {
-                        HideVeil();
-                    });
+                    HideVeil();
+                    _state = "display-target-changed";
+                    return;
                 }
-
-                break;
+            }
+            if (!_launchInProgress && !_nativeBubbles.TryGetWindowHandle(out _))
+            {
+                RecordFailure(_nativeBubbles.LastFailure ?? "Native Bubbles exited unexpectedly.");
+                return;
+            }
+            nint insertAfter = _nativeBubbles.TryGetWindowHandle(out var handle) ? handle : NativeMethods.HwndTopmost;
+            if (_engineBackground?.IsAlive == true)
+            {
+                _engineBackground.UpdateSize(_activeTarget.Bounds);
+                PlaceBackground(insertAfter, _activeTarget.Bounds);
+            }
+            else if (IsVisible) PlaceBackground(insertAfter, _activeTarget.Bounds);
+            if (_clock.Elapsed >= _nextBackgroundCheck && _launchCancellation is not null)
+            {
+                _nextBackgroundCheck = _clock.Elapsed + TimeSpan.FromSeconds(1);
+                _ = RefreshBackgroundAsync(_activeTarget, _launchCancellation.Token);
+            }
+            if (_veilVisible && _clock.Elapsed - _shownAt >= TimeSpan.FromSeconds(30)) _recovery.Reset();
         }
-
-        return nint.Zero;
+        catch (Exception exception) { RecordFailure(exception.Message); }
     }
 
-    private void ThrowIfDisposed()
+    private nint WindowMessageHook(nint window, int message, nint wParam, nint lParam, ref bool handled)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (message == NativeMethods.WmNchittest) { handled = true; return new nint(NativeMethods.HtTransparent); }
+        if (message == NativeMethods.WmMouseActivate) { handled = true; return new nint(NativeMethods.MaNoActivate); }
+        if (message is NativeMethods.WmDisplayChange or NativeMethods.WmDpiChanged)
+        {
+            // WPF receives DPI notifications during its own placement. Revalidate
+            // the target instead of repeatedly tearing down that valid launch.
+            _nextTargetCheck = TimeSpan.Zero;
+        }
+        return nint.Zero;
     }
 }

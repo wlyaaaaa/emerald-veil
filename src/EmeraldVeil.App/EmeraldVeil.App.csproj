@@ -1,13 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\EmeraldVeil.Core\EmeraldVeil.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Resource Include="..\..\assets\verdant-rain-4k.png"
-              Link="Assets\verdant-rain-4k.png" />
-  </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -24,7 +20,7 @@
     <!-- The installer deploys one executable. Embed WPF's native runtime files
          so the installed watchdog does not depend on publish-directory DLLs. -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <Version>0.1.28</Version>
+    <Version>0.1.37</Version>
   </PropertyGroup>
 
 </Project>

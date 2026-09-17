@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('Install', 'Verify', 'Remove')]
     [string]$Action = 'Install',
@@ -10,6 +10,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ([Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0) {
+    throw 'Run this per-user desktop entry in the signed-in interactive session, not SYSTEM/session 0.'
+}
 
 $runKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $approvedKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
@@ -101,6 +104,8 @@ function Test-InstalledState {
     [pscustomobject]@{
         status = 'verified'
         executable = $targetPath
+        installed_version = (Get-Item -LiteralPath $targetPath).VersionInfo.FileVersion
+        installed_sha256 = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash
         startup_value_name = $valueName
         startup_command = $expectedCommand
     }
@@ -109,7 +114,8 @@ function Test-InstalledState {
 function Stop-OwnedProcess {
     $ownedProcesses = @(Get-Process -Name 'EmeraldVeil' -ErrorAction SilentlyContinue | Where-Object {
         try {
-            [string]::Equals($_.Path, $targetPath, [System.StringComparison]::OrdinalIgnoreCase)
+            $_.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId -and
+                [string]::Equals($_.Path, $targetPath, [System.StringComparison]::OrdinalIgnoreCase)
         }
         catch {
             $false
@@ -124,6 +130,24 @@ function Stop-OwnedProcess {
     $ownedProcesses | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
 }
 
+function Start-OwnedResident {
+    # Launch through the signed-in desktop shell, not an automation tool's
+    # kill-on-close child job. Natural login continues to use the same HKCU Run.
+    $shell=New-Object -ComObject Shell.Application
+    try { $shell.ShellExecute($targetPath, '', (Split-Path -Parent $targetPath), 'open', 1) }
+    finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell) }
+    $deadline=[DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $match=@(Get-Process -Name 'EmeraldVeil' -ErrorAction SilentlyContinue|Where-Object {
+            try { $_.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId -and $_.Path -ieq $targetPath }
+            catch { $false }
+        })
+        if($match.Count -eq 1){return}
+        if($match.Count -gt 1){throw 'Multiple owned resident controllers found.'}
+        Start-Sleep -Milliseconds 100
+    } while([DateTime]::UtcNow -lt $deadline)
+    throw 'The installed resident did not start in the signed-in session.'
+}
 function Remove-OwnedFile {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -167,6 +191,12 @@ switch ($Action) {
         New-Item -ItemType Directory -Path $InstallDirectory -Force | Out-Null
         $stagedPath = Join-Path $InstallDirectory ('.EmeraldVeil.{0}.tmp' -f [guid]::NewGuid().ToString('N'))
         $backupPath = "$targetPath.previous"
+        $replacementPerformed = $false
+        $hadTarget = Test-Path -LiteralPath $targetPath -PathType Leaf
+        $wasRunning = @(Get-Process -Name 'EmeraldVeil' -ErrorAction SilentlyContinue | Where-Object {
+            try { $_.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId -and $_.Path -ieq $targetPath }
+            catch { $false }
+        }).Count -gt 0
 
         try {
             Copy-Item -LiteralPath $resolvedSource -Destination $stagedPath
@@ -184,6 +214,7 @@ switch ($Action) {
                 [System.IO.File]::Move($stagedPath, $targetPath)
             }
 
+            $replacementPerformed = $true
             $maintenance = Start-Process -FilePath $targetPath -ArgumentList '--install-startup' -WindowStyle Hidden -Wait -PassThru
             if ($maintenance.ExitCode -ne 0) {
                 throw "Startup registration failed with exit code $($maintenance.ExitCode)."
@@ -192,15 +223,17 @@ switch ($Action) {
             Remove-OwnedLegacyRunValue
 
             Test-InstalledState | Out-Null
-            Start-Process -FilePath $targetPath
+            Start-OwnedResident
             Test-InstalledState
         }
         catch {
-            if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
+            if ($replacementPerformed -and $hadTarget -and (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
                 Stop-OwnedProcess
                 Copy-Item -LiteralPath $backupPath -Destination $targetPath -Force
+                if ($wasRunning) { Start-OwnedResident }
             }
-            elseif (-not [string]::Equals((Get-OwnerPath), $targetPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            elseif ($replacementPerformed -and -not $hadTarget) {
+                Stop-OwnedProcess
                 Remove-Item -LiteralPath $targetPath -Force -ErrorAction SilentlyContinue
             }
             throw

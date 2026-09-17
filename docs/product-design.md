@@ -1,110 +1,60 @@
 # Product design
 
-The project preserves one selected 4K green rainforest-and-cat image shared by the embedded Bubbles background and the one-shot native Windows desktop/lock-screen recovery entry. Its contract is [Windows background recovery](windows-background.md). The entry applies and verifies every Windows monitor, including VDD and remembered detached monitors. This static background operation does not modify Wallpaper Engine, start or alter the Bubbles watchdog, or resume the rejected cat experiment. Updating the embedded image still requires rebuilding and installing the watchdog. The runtime contract below continues to describe Bubbles only.
+## Scope and display policy
 
-## Product contract
+Emerald Veil preserves the selected 4K green rainforest-and-cat asset, the one-shot Windows wallpaper/lock-screen recovery entry, and the original Windows-native Bubbles visual effect. The static image contract is [Windows background recovery](windows-background.md). Static wallpaper still covers all Windows monitors, including VDD and remembered detached screens. Changing that image does not start, stop or reconfigure Wallpaper Engine or Bubbles; embedding a new image requires rebuilding the app. The rejected cat-layer experiment is not part of the product.
 
-The active product is a reversible Windows-native Bubbles overlay plus a small no-console idle watchdog:
+Automatic and explicit Bubbles display use one **physical-desktop-only** target policy. The resolver uses the current Windows device identity, prefers the primary eligible physical desktop screen, and excludes VDD, instrument displays, unknown identities and active blackout targets. It never substitutes an instrument panel or VDD for a powered-off physical screen. With no eligible screen, the installed app remains enabled and keeps measuring idle time, but launches no renderer and shows no background.
 
-1. The watchdog samples `GetLastInputInfo` every 50 ms. A low-level in-memory classifier compares per-monitor-aware mouse-event points. It ignores an exact zero-displacement `WM_MOUSEMOVE`; for idle accounting only, it also defers one isolated injected nonzero move until a second injected move arrives within 250 ms. The injected event itself still reaches the system. When a changed raw tick arrives before its hook classification, it remains pending for one sample; a matching ignored classification preserves the prior accepted tick, while a valid or still-unclassified tick becomes activity on the next sample.
-2. After 360 seconds of reliable inactivity, it manually starts the installed `%WINDIR%\System32\Bubbles.scr /s` in the signed-in user's current interactive session.
-3. Before that launch, a uniquely identified current-session Wallpaper Engine renderer is paused through its nonpersistent control client when present. The full-size embedded project background then completes WPF render and a DWM composition barrier. After the native Bubbles HWND satisfies its overlay contract, Wallpaper Engine is immediately resumed without any configuration write. This prevents native Bubbles from capturing a transient Wallpaper frame while keeping the existing desktop wallpaper selection intact.
-4. It shows the embedded project background image in a full-size WPF layer, keeps that layer click-through and non-activating, then selects the exact child process window that intersects the primary target display, hides other visible windows from that process, color-keys black pixels, and applies `WS_EX_LAYERED`, `WS_EX_TRANSPARENT`, `WS_EX_NOACTIVATE`, `WS_EX_TOOLWINDOW`, topmost placement, and `SWP_NOACTIVATE` to the native Bubbles window. While visible, a 100 ms placement loop keeps the WPF background immediately below that selected HWND, and the native renderer maintenance loop reasserts its full topmost/bounds/style contract every 250 ms so another topmost desktop window cannot remain above either layer. A transient DWM conflict is retried; only eight consecutive failures over two seconds end the owned renderer.
-5. The selected image is the visual background while the veil is active; the desktop remains live and receives normal input. Microsoft still owns the bubble assets, material, animation, collision, and boundary behavior.
-6. Before launch, a crash-safe cross-process session lease and a read-only current-session process check refuse a second native renderer. They never kill or take over an existing instance.
-7. Physical movement, a confirmed injected movement stream, buttons, wheel, and keyboard activity hide the selected HWND no later than the next 50 ms sampling decision, then close a `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object. A lone injected movement remains delivered to applications but does not dismiss the veil. Explicit Disable and watchdog termination use the same ownership boundary, so an old native renderer cannot overlap a new one.
-8. While the desired mode remains visible, the watchdog compares that desired state with the owned renderer process every poll. If native Bubbles exits or a launch is temporarily refused, it retries after a one-second backoff; input changes the desired mode to hidden and cancels recovery.
+VDD is intentionally excluded because this machine's native Bubbles build did not render reliably with its display-device enumeration. The accepted fallback is no automatic Bubbles on VDD, not custom-drawn bubbles, `/t`, a compatibility DLL, a Windows binary patch or a display-driver reset. Ordinary Windows wallpaper on VDD remains enabled.
 
-Windows' configured automatic screen-saver/lock trigger remains inactive. The application starts `/s` itself only when its own reliable idle clock reaches six minutes; it does not use Windows' foreground `SC_SCREENSAVE` delivery path. The visible output is a native Bubbles window above the embedded project image, not a screenshot, checkerboard, secure desktop, or custom-drawn bubble scene.
+## Rendering and lifetime
 
-The project-owned `assets/verdant-rain-4k.png` (3840×2160), also selected by `assets/windows-background.json`, is embedded in the watchdog and rendered by the WPF background layer. It is not loaded into or copied by the Bubbles renderer, and the feature does not depend on which application currently owns the Windows desktop wallpaper. The original JPG remains only as the independent rain experiment's reference image.
+After 360 seconds of reliable inactivity, the user-session watchdog manually starts the installed `%WINDIR%\System32\Bubbles.scr /s`. Before launch, the selected VDD material is composed on the eligible physical target and a DWM composition barrier completes: use the existing Wallpaper Engine VDD material/properties when a real VDD renderer selection is available, otherwise use VDD Windows wallpaper/color/fit. The native renderer then takes its normal entry snapshot. **Wallpaper Engine is never globally stopped, paused, replayed or reconfigured by this app**, including on initialization failure.
 
-## Size and display policy
+The selected VDD material is prepared by a full-size, click-through, non-activating WPF background. For Wallpaper Engine material, one exact offscreen pop-out and DWM thumbnail may be used as the material source; this is not continuous VDD screen capture. The native Bubbles window is selected only from the exact owned child process; other visible windows from that child are hidden. The HWND keeps the complete Windows-native glass/background composite with full-opacity layering, no-activate, tool-window and topmost styles at the target's physical rectangle. It is never black-color-keyed because that corrupts partially transparent glass into opaque dark rings. Microsoft continues to own the bubble colors, glass, motion, collisions, density and boundary behavior. The project does not draw replacement bubbles.
 
-The product does not derive bubble size from screen inches, resolution, WPF device-independent pixels, or Windows scale percentage. The registry bit pattern `1130000000` represents approximately `218.43`; this Windows build clamps the native `/s` radius to its internal maximum of 200, giving a nominal 400-physical-pixel diameter. Changing Windows scaling among 150%, 175%, and 200% therefore does not resize the bubbles.
+Per-Monitor V2 awareness is established before the first HWND. Window placement uses physical pixels, not guessed monitor indices or WPF DIPs. Display/DPI messages invalidate a target check rather than unconditionally restarting a launch. Actual target changes remove the old presentation before re-selection. A 100 ms background maintenance tick keeps the image immediately below the native HWND; the native layer checks its bounds/styles at 250 ms. Both verify exact process ownership, and native placement is serialized with cancellation so an old maintenance tick cannot re-show a cancelled window.
 
-Windows retains its native default density. On a 3840×2160 target, the current build's native formula yields roughly 26 maximum-size bubbles—dozens of large bubbles rather than the thousands created by `/p` preview mode. Count remains Windows-owned; the project does not write `SphereDensity`.
+A current-session cross-process file lease and process check refuse duplicate native instances without killing an unknown owner. Every owned child is placed in a kill-on-close Job Object. Normal dismissal removes the background before native teardown and hides only a HWND still belonging to the owned process. Exit, crash and replacement cannot leave a second renderer behind. Session 0 is rejected before startup-registration or desktop commands.
 
-Per-Monitor V2 awareness is declared before any HWND is created. `Screen.PrimaryScreen.Bounds` supplies the target's physical rectangle for window placement only; it is not an input to bubble size. A display/DPI change restarts the owned renderer after stopping the prior Job Object.
+Initialization is bounded: the native window deadline is five seconds and the presenter has a six-second cancellation-aware limit. Hidden, initializing and usable-window states are distinct. Failures receive a five-second cooldown, then a thirty-second cooldown; the third failure suspends automatic attempts for the current idle episode. New meaningful input, an explicit permitted retry or a target change resets recovery. Thirty seconds of stable presentation clears old failures. A one-second reconciliation check does not authorize endless relaunches.
 
-## Windows configuration
+## Input, preview and controls
 
-`Enable` writes these per-user values and applies runtime state through `SystemParametersInfoW`:
+The watchdog samples `GetLastInputInfo` every 50 ms. The narrow low-level in-memory classifier ignores an exact zero-displacement `WM_MOUSEMOVE`. For idle accounting it also defers a lone injected nonzero reposition; a second injected move within 250 ms confirms remote movement. The event itself is still delivered. A changed raw tick can remain pending for one sample while its hook classification arrives. Valid or still-unclassified activity is accepted by the next sample. Physical motion, a confirmed injected movement stream, buttons, wheel and keyboard dismiss the presentation. Hook installation failure does not make changed input indefinitely invisible.
 
-| Location | Name | Type | Value |
-| --- | --- | --- | --- |
-| `HKCU\Control Panel\Desktop` | `SCRNSAVE.EXE` | `REG_SZ` | absolute `%WINDIR%\System32\Bubbles.scr` path |
-| `HKCU\Control Panel\Desktop` | `ScreenSaveTimeOut` | `REG_SZ` | `360` |
-| `HKCU\Control Panel\Desktop` | `ScreenSaveActive` | `REG_SZ` | `0` |
-| `HKCU\Control Panel\Desktop` | `ScreenSaverIsSecure` | `REG_SZ` | `0` |
-| `HKCU\Software\Microsoft\Windows\CurrentVersion\Screensavers\Bubbles` | `Radius` | `REG_DWORD` | `1130000000` (`0x435A6E80`) |
-| `HKCU\Software\EmeraldVeil` | `NativeBubblesEnabled` | `REG_DWORD` | `1` enabled, `0` disabled |
+The classifier retains only the previous point and minimal sequence/tick state. It records no key contents, program identities, activity logs or persistent coordinates. There is no remote-product allowlist. Remote tools share the normal interactive desktop; the app never locks the session or enters secure desktop.
 
-Runtime setters use active=false, timeout=360, and secure=false. Windows can reconstruct active=true during sign-in even while the registry remains `ScreenSaveActive=0`, so the enabled watchdog reasserts runtime active=false on every login start before monitoring idle time. This prevents Windows from independently launching a second screen saver at the same threshold. The only helper is the direct WinExe `HKCU\...\Run` value; there is no service, SYSTEM process, scheduled task, console, shell interpreter, capture API, network listener, or telemetry.
+Pause, Disable, unreliable input and meaningful activity outrank every explicit display request. `--preview` is input-dismissible and lasts at most 15 seconds. `--show-now` remains input-dismissible and cannot bypass pause, Disable or target exclusion. Preview expiry without user input cannot immediately become another idle launch. Reopening an already running executable with no arguments queries status rather than forcing a preview.
 
-The same watchdog checks the persisted timeout plus runtime active/timeout/secure state every 30 seconds and reasserts false/360/false only when drift is observed. On Windows 11 builds that report an effective runtime timeout of `0` whenever the automatic trigger is disabled, `0` is accepted only with runtime `active=false`; the persisted `REG_SZ` value remains `360`, and the watchdog's own six-minute timeline remains authoritative. This repairs driver-reset or system-setting reconstruction without adding a second helper or touching the visible overlay/window contract.
+The existing tray offers status/target/idle/last failure, true “start screen saver now”, bounded preview, session pause, per-user startup and exit. Double-clicking the tray icon starts the true screen saver. `Ctrl+Win+E` does the same through the already-required `WH_KEYBOARD_LL` observer; no second hotkey service/task is installed. The exact chord is consumed, then the controller waits for every chord key to be released and for a 250 ms stable-input interval before baselining, so its own key-up cannot dismiss the new presentation. `--status`, `--pause` and `--resume` use a bounded current-user/current-session named pipe and do not create a missing controller. No service, new task, network listener, persistent telemetry or extra watchdog is introduced. Exit leaves the wallpaper, Wallpaper Engine and the instrument-screen project alone.
 
-Wallpaper Engine control commands must both finish within three seconds and return exit code zero. A nonzero result is an initialization or resume failure, not successful playback control. This result check does not itself prove that the intended pixels appeared on the desktop; actual visual acceptance remains separate.
+## Windows configuration and restoration
 
-## Remote and input boundary
+`Set-NativeBubbles.ps1 -Action Enable` maintains the following per-user values and reads back their types and runtime state:
 
-Remote-control and streaming products are not detectable as a complete, reliable class, so Emerald Veil does not maintain an allowlist or attempt generic remote-session suppression. Compatibility comes from staying on the user's existing interactive desktop, keeping the Windows automatic/secure trigger disabled, using a click-through image background plus color-keyed native bubbles, and avoiding capture or display reconfiguration. ToDesk, Sunshine, UU/GameViewer, and future tools all receive the same behavior.
+| Location | Value | Required setting |
+| --- | --- | --- |
+| `HKCU\Control Panel\Desktop` | `SCRNSAVE.EXE` | absolute system `Bubbles.scr` path, REG_SZ |
+| same | `ScreenSaveTimeOut` | `360`, REG_SZ |
+| same | `ScreenSaveActive` | `0`, REG_SZ |
+| same | `ScreenSaverIsSecure` | `0`, REG_SZ |
+| `HKCU\Software\Microsoft\Windows\CurrentVersion\Screensavers\Bubbles` | `Radius` | `1130000000`, REG_DWORD |
+| `HKCU\Software\EmeraldVeil` | `NativeBubblesEnabled` | `1` enabled, `0` explicitly disabled, REG_DWORD |
 
-Remote, streaming, device-sharing, and virtual-HID software can periodically emit a mouse move without changing the pointer position, and can also emit a single injected nonzero reposition while an overlay is being established. An exact no-op must neither reset the six-minute idle clock nor reach applications. A lone injected reposition is still passed through, but it does not reset the idle clock unless another injected move follows within 250 ms. The comparison uses the previous per-monitor-aware event point, not WPF DIPs or display scaling. Physical movement, continued remote movement, buttons, wheel events, and keyboard input still dismiss Bubbles. This event-level rule deliberately cannot infer the source program.
+Windows' own automatic trigger stays off to prevent a competing screen saver. **This is not the same as disabling Emerald Veil.** The app's enabled flag and direct `HKCU\...\Run` value `Emerald Veil Native Bubbles` remain active. A normal login starts the app enabled and unpaused; pause is deliberately session-only and never persisted across login/restart. The app checks runtime active/timeout/secure settings every 30 seconds and repairs only observed drift to false/360/false. The native radius is an undocumented Windows implementation detail; the app does not derive size or density from DPI, monitor inches or a replacement renderer, and updates require real visual verification.
 
-The classifier keeps only the previous mouse-event point plus minimal injected-sequence, accepted, pending, and latest-classification tick state in process memory. The one-sample pending state prevents a `GetLastInputInfo`/low-level-hook ordering race from committing an ignored event before its classification arrives. It does not retain key values, write activity logs, identify a remote-control product, or persist coordinates. If the narrow hooks cannot be installed, an unclassified changed tick is accepted on its second sample rather than being ignored indefinitely.
+The first Enable flushes exact registry presence/kind/value and runtime state to the durable local `native-bubbles-preimage.json`; repeated enables validate but never overwrite it. Restore supports the existing v1/v2 preimages. Disable first prevents relaunch by clearing the enabled flag and Windows automatic trigger, then stops matching system-path renderers only in the current user session. Cleanup failure must not roll the flags back to enabled. Remove deletes only the owned startup registration and installation. Installation stages and hashes the single executable, and rollback can restore `.previous` only if the current attempt actually replaced the target; an unrelated older backup is never used after a pre-replacement failure.
 
-The background layer and native bubbles are composited in the current interactive desktop without screen capture. A real remote client remains the authority for end-to-end connection and image acceptance; process/service presence alone is not such proof.
+## Blackout coordination
 
-An explicit external blackout can temporarily take precedence by holding an open
-session-local named mutex handle named `Local\EmeraldVeil.ExternalProtectionPause`.
-The client creates it with `initiallyOwned: false` before showing its blackout and
-disposes the handle after removing that blackout. This is a lifetime marker, not
-a mutex lock: no wait or `ReleaseMutex` is required. The existing 50 ms monitor
-suppresses both idle activation and explicit preview while any client holds the
-marker, and the UI dispatcher rechecks it before applying a queued visible mode.
-An already-visible owned renderer is hidden through the existing stop path.
-Observers immediately close their probe handles; closing or crashing the last
-protecting client removes the marker automatically. Normal configured idle and
-manual-pause behavior then resumes. This does not change the configured timeout,
-enabled flag, Windows screen-saver settings, startup entry, or desktop topology.
-No remote-product detection, additional helper, file, service, or task is added.
+A blackout owner holds the lifetime marker `Local\EmeraldVeil.ExternalProtectionPause` with `initiallyOwned:false`; no wait or ReleaseMutex is required. A legacy unscoped marker excludes all targets. A scoped per-monitor marker excludes that monitor. The shared idle clock continues; removing the last marker returns to the normal target/idle policy. No blackout marker changes the enabled flag, startup registration, screen-saver timeout or topology. The physical-only policy means an excluded physical screen does not redirect Bubbles to VDD.
 
-`WS_EX_TRANSPARENT` and `WS_EX_NOACTIVATE` keep the overlay from becoming an application input surface. Regardless of native exit timing, the watchdog's first observed input synchronously hides the owned HWND before process teardown.
+## Acceptance and limits
 
-## Reversibility
+Release tests cover input classification, preview cancellation/deadlines, `Ctrl+Win+E` source contract and release-safe baseline, positive physical identity, VDD/instrument/unknown exclusions, recovery delays/suspension, source teardown order, exact ownership, reversible native visual-profile migration, bounded control and emergency disable. Build, policy tests, script parsing, install verification, installed/source SHA-256 parity and a live synthetic hotkey E2E are separate checks.
 
-Before the first mutation, `Enable` captures:
+A VDD-only live acceptance keeps the app enabled, exercises status/pause/resume and duplicate startup, and observes a real six-minute interval with zero renderer launches and no background takeover. It must not be reported as successful physical-screen animation. With the physical main powered on, separately observe native moving pixels over the selected image at the real 360-second threshold, input exit, reconnect/mixed-DPI behavior, a real remote client and natural login/reboot. A valid process or HWND is not proof of moving pixels; unperformed observations remain explicitly unverified.
 
-- the runtime active, timeout, and secure values;
-- exact presence, registry kind, and value for every touched native/profile setting;
-- the project-owned enabled flag;
-- legacy Emerald Veil `Run`, `StartupApproved`, and owner values.
-
-The record is flushed to a same-directory temporary file and atomically moved to `%LOCALAPPDATA%\EmeraldVeil\native-bubbles-preimage.json`. Repeated `Enable` operations validate but do not overwrite it. Schema v2 records the enabled flag; v1 remains accepted and restores that flag as absent.
-
-`Disable` has the deliberately small emergency contract: stop the exact native Bubbles process, prove `NativeBubblesEnabled=0`, and prove Windows active=false even if a nonessential profile value drifted. `Restore` reproduces the original presence, kinds, values, and runtime state. `Install-EmeraldVeil.ps1 -Action Remove` removes the owned startup entry and executable.
-
-## Scope and limits
-
-- The repository depends on the Windows-installed `Bubbles.scr` and does not redistribute Microsoft code or assets.
-- `Radius` and the observed density formula are undocumented implementation details and may change in a future Windows build. Verification fails closed on configuration drift; release acceptance checks actual rendering.
-- Native Bubbles controls edge/collision behavior. Avoiding partially off-edge bubbles would require altering Microsoft motion or drawing a replacement, which is outside this product contract.
-- Moving pixels reduce a completely static idle image but do not guarantee OLED burn-in prevention. Brightness, panel pixel shift, display-off timers, and panel maintenance remain relevant.
-- On battery, a display-off timeout shorter than 360 seconds may turn the panel off first; that is stronger OLED protection even though no bubbles are visible.
-
-## Acceptance checklist
-
-- PowerShell parser and embedded `SystemParametersInfoW` interop compile.
-- Release build and unit tests pass.
-- `Enable` reads back the absolute system path, exact registry kinds/values, persisted timeout=360, secure=false, enabled flag=1, and Windows active=false; an effective runtime timeout of 0 is accepted only when Windows also reports active=false.
-- The direct startup entry points to the installed WinExe; no legacy startup entry, service, scheduled task, or shell wrapper remains.
-- A user-authorized visual check observes native maximum-size multicolor bubbles over the embedded 3840×2160 project background for at least 15 seconds with no black, grey, checkerboard, unintended wallpaper fallback, or spontaneous cleanup.
-- The selected HWND exactly matches the target physical rectangle and includes layered, transparent, no-activate, tool-window, and topmost styles.
-- Input hides the selected window within 100 ms and leaves no Bubbles process.
-- Unit tests cover exact zero-displacement `WM_MOUSEMOVE` events both with and without the injected flag, including the race where the raw tick is sampled before its ignored classification. They prove a lone injected nonzero move is delivered but ignored for idle, a second injected move within 250 ms confirms activity, an unclassified tick is accepted on its second observation, and a valid classification commits immediately. A PMv2 acceptance helper injects an exact zero-displacement move and the same native Bubbles PID remains visible; an injected test key then dismisses it.
-- Immediate Stop and watchdog process termination both leave zero Bubbles processes, proving Job Object cleanup and no overlap.
-- A deterministic reconciliation test simulates the native renderer exiting while idle, proves no retry occurs before the bounded delay, proves retries continue while it remains absent, and proves input still hides immediately.
-- The real 360-second threshold is observed in the interactive user session.
-- A real remote client verifies connection continuity and the composited image; tool names do not alter runtime behavior.
-- `Disable`, idempotent `Enable`, and exact `Restore` all pass read-back checks.
+The project does not redistribute Microsoft components. It does not alter native collision behavior or guarantee OLED burn-in prevention. Display-off timers, brightness and hardware panel maintenance remain independent. Machine-specific evidence, screenshots, snapshots and original settings stay outside this public repository.
