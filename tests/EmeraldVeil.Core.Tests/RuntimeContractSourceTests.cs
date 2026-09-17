@@ -125,6 +125,8 @@ public sealed class RuntimeContractSourceTests
         Assert.Contains("function Test-ResidentState", script);
         Assert.Contains("hotKeyAvailable", script);
         Assert.Contains("Expected exactly one interactive Emerald Veil resident", script);
+        Assert.Contains("Test-CurrentProcessKillOnCloseJob", script);
+        Assert.Contains("Refusing to install from a kill-on-close job", script);
         Assert.Contains("SessionId -eq 0", script);
         Assert.Contains("owner == process.Id", Source("NativeBubblesLauncher.cs"));
     }

@@ -111,6 +111,41 @@ function Test-InstalledState {
     }
 }
 
+function Test-CurrentProcessKillOnCloseJob {
+    if (-not ('EmeraldVeil.InstallJobProbe' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+namespace EmeraldVeil
+{
+    public static class InstallJobProbe
+    {
+        private const uint JobObjectLimitKillOnJobClose = 0x00002000;
+        private const int JobObjectExtendedLimitInformation = 9;
+        [StructLayout(LayoutKind.Sequential)] private struct IoCounters { public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount, ReadTransferCount, WriteTransferCount, OtherTransferCount; }
+        [StructLayout(LayoutKind.Sequential)] private struct BasicLimitInformation { public long PerProcessUserTimeLimit, PerJobUserTimeLimit; public uint LimitFlags; public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass, SchedulingClass; }
+        [StructLayout(LayoutKind.Sequential)] private struct ExtendedLimitInformation { public BasicLimitInformation BasicLimitInformation; public IoCounters IoInfo; public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed; }
+        [DllImport("kernel32.dll", SetLastError = true)] private static extern bool IsProcessInJob(IntPtr processHandle, IntPtr jobHandle, out bool result);
+        [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(IntPtr jobHandle, int informationClass, out ExtendedLimitInformation information, int informationLength, IntPtr returnLength);
+        public static bool IsKillOnCloseJob()
+        {
+            bool inJob;
+            if (!IsProcessInJob(Process.GetCurrentProcess().Handle, IntPtr.Zero, out inJob)) throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (!inJob) return false;
+            ExtendedLimitInformation information;
+            if (!QueryInformationJobObject(IntPtr.Zero, JobObjectExtendedLimitInformation, out information, Marshal.SizeOf<ExtendedLimitInformation>(), IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
+            return (information.BasicLimitInformation.LimitFlags & JobObjectLimitKillOnJobClose) != 0;
+        }
+    }
+}
+"@
+    }
+    return [EmeraldVeil.InstallJobProbe]::IsKillOnCloseJob()
+}
+
 function Test-ResidentState {
     $ownedProcesses = @(Get-Process -Name 'EmeraldVeil' -ErrorAction SilentlyContinue | Where-Object {
         try {
@@ -193,8 +228,8 @@ function Stop-OwnedProcess {
 }
 
 function Start-OwnedResident {
-    # Launch through the signed-in desktop shell, not an automation tool's
-    # kill-on-close child job. Natural login continues to use the same HKCU Run.
+    # The caller is already proven outside any kill-on-close job before Install.
+    # Launch in the signed-in interactive user session; natural login uses the same HKCU Run.
     $shell=New-Object -ComObject Shell.Application
     try { $shell.ShellExecute($targetPath, '', (Split-Path -Parent $targetPath), 'open', 1) }
     finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell) }
@@ -238,6 +273,10 @@ switch ($Action) {
     }
 
     'Install' {
+        if (Test-CurrentProcessKillOnCloseJob) {
+            throw 'Refusing to install from a kill-on-close job: any resident child would be terminated when this installer process exits. Run the installer from a normal interactive PowerShell or an out-of-job user-session deployment broker.'
+        }
+
         $resolvedSource = [System.IO.Path]::GetFullPath($SourcePath)
         if (-not (Test-Path -LiteralPath $resolvedSource -PathType Leaf)) {
             throw "Published executable is missing: $resolvedSource"
