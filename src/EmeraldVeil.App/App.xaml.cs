@@ -47,7 +47,7 @@ public partial class App : System.Windows.Application
             }
             return;
         }
-        if (command is "status" or "pause" or "resume")
+        if (command is "status")
         {
             WriteCommandResponse("{\"status\":\"not-running\"}");
             Shutdown(2);
@@ -82,8 +82,6 @@ public partial class App : System.Windows.Application
             case "status": break;
             case "preview": _controller.RequestPreview(); break;
             case "show-now": _controller.RequestImmediateDisplay(); break;
-            case "pause": _controller.SetPaused(true); break;
-            case "resume": _controller.SetPaused(false); break;
             default: return "{\"status\":\"unknown-command\"}";
         }
         return JsonSerializer.Serialize(_controller.ReadStatus());
@@ -91,7 +89,7 @@ public partial class App : System.Windows.Application
 
     private static string? ReadCommand(IEnumerable<string> arguments)
     {
-        foreach (string command in new[] { "status", "pause", "resume", "show-now", "preview" })
+        foreach (string command in new[] { "status", "show-now", "preview" })
             if (arguments.Contains("--" + command, StringComparer.OrdinalIgnoreCase)) return command;
         return null;
     }

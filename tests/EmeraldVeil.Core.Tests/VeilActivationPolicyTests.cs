@@ -13,7 +13,7 @@ public sealed class VeilActivationPolicyTests
     {
         var result = Policy.Evaluate(
             new IdleObservation(true, TimeSpan.FromMilliseconds(milliseconds)),
-            isPaused: false,
+            suppressActivation: false,
             previewRequested: false);
 
         Assert.Equal(expected, result);
@@ -24,29 +24,29 @@ public sealed class VeilActivationPolicyTests
     {
         var result = Policy.Evaluate(
             new IdleObservation(false, TimeSpan.FromHours(1)),
-            isPaused: false,
+            suppressActivation: false,
             previewRequested: false);
 
         Assert.Equal(VeilMode.Hidden, result);
     }
 
     [Fact]
-    public void PauseSuppressesIdleActivation()
+    public void SuppressionBlocksIdleActivation()
     {
         var result = Policy.Evaluate(
             new IdleObservation(true, TimeSpan.FromMinutes(6)),
-            isPaused: true,
+            suppressActivation: true,
             previewRequested: false);
 
         Assert.Equal(VeilMode.Hidden, result);
     }
 
     [Fact]
-    public void PauseAlsoSuppressesExplicitPreview()
+    public void SuppressionAlsoBlocksExplicitPreview()
     {
         var result = Policy.Evaluate(
             new IdleObservation(true, TimeSpan.Zero),
-            isPaused: true,
+            suppressActivation: true,
             previewRequested: true);
 
         Assert.Equal(VeilMode.Hidden, result);
@@ -60,10 +60,10 @@ public sealed class VeilActivationPolicyTests
         var observation = new IdleObservation(true, TimeSpan.FromHours(8));
 
         Assert.Equal(VeilMode.Hidden, Policy.Evaluate(
-            observation, isPaused: false, previewRequested: preview,
+            observation, suppressActivation: false, previewRequested: preview,
             externalProtectionActive: true));
         Assert.Equal(preview ? VeilMode.Preview : VeilMode.Idle, Policy.Evaluate(
-            observation, isPaused: false, previewRequested: preview,
+            observation, suppressActivation: false, previewRequested: preview,
             externalProtectionActive: false));
     }
 }

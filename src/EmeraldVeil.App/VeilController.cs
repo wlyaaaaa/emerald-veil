@@ -18,7 +18,6 @@ internal sealed class VeilController : IAsyncDisposable
     private readonly CancellationTokenSource _cancellation = new();
     private readonly object _stateLock = new();
     private Task? _monitorTask;
-    private bool _isPaused;
     private bool _hotKeyAvailable;
     private string? _hotKeyError;
     private readonly PreviewSession _preview = new();
@@ -38,7 +37,6 @@ internal sealed class VeilController : IAsyncDisposable
             (ulong)RuntimePolicyMaintenanceInterval.TotalMilliseconds;
     }
 
-    internal bool IsPaused { get { lock (_stateLock) { return _isPaused; } } }
     internal TimeSpan ActivationDelay => _policy.ActivationDelay;
     internal void SetHotKeyAvailability(bool available, string? error)
     {
@@ -60,7 +58,6 @@ internal sealed class VeilController : IAsyncDisposable
                 version = typeof(VeilController).Assembly.GetName().Version?.ToString(),
                 processId = Environment.ProcessId,
                 enabled = NativeBubblesSettings.IsEnabled(),
-                paused = _isPaused,
                 activationSeconds = ActivationDelay.TotalSeconds,
                 idleSeconds = _lastObservation.IdleDuration.TotalSeconds,
                 inputReliable = _lastObservation.IsReliable,
@@ -72,16 +69,6 @@ internal sealed class VeilController : IAsyncDisposable
                 presentation = _window.ReadStatus(),
             };
         }
-    }
-
-    internal void SetPaused(bool paused)
-    {
-        lock (_stateLock)
-        {
-            _isPaused = paused;
-            if (paused) _preview.Cancel();
-        }
-        if (paused) QueueMode(VeilMode.Hidden);
     }
 
     internal void RequestPreview() => RequestExplicitDisplay(PreviewDuration);
@@ -123,7 +110,7 @@ internal sealed class VeilController : IAsyncDisposable
         var sample = _inputSource.Read();
         lock (_stateLock)
         {
-            if (_isPaused || !sample.Succeeded || !NativeBubblesSettings.IsEnabled()) return;
+            if (!sample.Succeeded || !NativeBubblesSettings.IsEnabled()) return;
             _preview.Request(sample.LastInputTick32, sample.CurrentTick64, timeout);
             // A command without local input must not turn an expired preview into another idle launch.
             _suppressIdleUntilTick64 = sample.CurrentTick64 + (ulong)ActivationDelay.TotalMilliseconds;
@@ -154,19 +141,19 @@ internal sealed class VeilController : IAsyncDisposable
                 var observation = _timeline.Observe(sample.Succeeded, sample.CurrentTick32,
                     sample.CurrentTick64, sample.LastInputTick32);
                 MaintainRuntimePolicy(sample.CurrentTick64);
-                bool paused;
+                bool suppressed;
                 bool preview;
                 lock (_stateLock)
                 {
                     _lastObservation = observation;
-                    paused = _isPaused || !NativeBubblesSettings.IsEnabled();
+                    suppressed = !NativeBubblesSettings.IsEnabled();
                     preview = _preview.Observe(sample.Succeeded, sample.LastInputTick32,
-                        sample.CurrentTick64, allowed: !paused);
-                    paused |= !preview && sample.CurrentTick64 < _suppressIdleUntilTick64;
+                        sample.CurrentTick64, allowed: !suppressed);
+                    suppressed |= !preview && sample.CurrentTick64 < _suppressIdleUntilTick64;
                 }
                 // Display-specific blackout exclusion belongs to the display resolver;
                 // it must not freeze the shared user-session idle clock.
-                QueueMode(_policy.Evaluate(observation, paused, preview));
+                QueueMode(_policy.Evaluate(observation, suppressed, preview));
             }
             catch (Exception exception)
             {

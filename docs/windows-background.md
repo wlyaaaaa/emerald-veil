@@ -1,8 +1,8 @@
 # Windows 壁纸与锁屏恢复
 
-当前选用 **雨林黑猫 · 更绿版**的 3840 × 2160 图片，保留用户选定的绿色雨林、苔石和右上角黑猫。所有 Windows 屏幕（包括 VDD）的底层桌面壁纸、真正的系统锁屏，以及泡泡程序内嵌背景，共用 `assets/verdant-rain-4k.png`。已有 Wallpaper Engine 继续显示自己的内容。本设置入口不修改 Wallpaper Engine，不安装或启停泡泡程序；泡泡内嵌素材更新后仍需重新构建并安装程序。
+当前选用 **雨林黑猫 · 更绿版**的 3840 × 2160 图片，保留用户选定的绿色雨林、苔石和右上角黑猫。所有 Windows 屏幕（包括 VDD）的底层 Windows 桌面壁纸与真正的系统锁屏共用 `assets/verdant-rain-4k.png`。已有 Wallpaper Engine 继续显示自己的内容。本设置入口不修改 Wallpaper Engine，也不安装或启停泡泡程序。泡泡运行时优先复用 VDD 当前 Wallpaper Engine 材料，没有可用材料时才使用这里配置的 VDD Windows 壁纸，因此更换静态图片不需要重建 Emerald Veil。
 
-Windows 与泡泡底板采用同一静态图。来源尺寸与处理方式记录在选图清单中，不把放大后的尺寸当作原生生成分辨率。动态雨幕仍保存在 `experiments/verdant-rain`，其原画参考继续保留；失败的猫分层方案不属于选用资产。PNG 是 sRGB SDR，未宣称 HDR 或 10 位输出。
+该静态图只定义 Windows 壁纸与锁屏基线；泡泡底板在运行时从 VDD 当前材料/Windows 壁纸取得。来源尺寸与处理方式记录在选图清单中，不把放大后的尺寸当作原生生成分辨率。动态雨幕仍保存在 `experiments/verdant-rain`，其原画参考继续保留；失败的猫分层方案不属于选用资产。PNG 是 sRGB SDR，未宣称 HDR 或 10 位输出。
 
 ## 现在恢复或换机
 

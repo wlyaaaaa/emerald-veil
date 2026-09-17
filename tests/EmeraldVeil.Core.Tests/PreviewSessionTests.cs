@@ -10,7 +10,7 @@ public sealed class PreviewSessionTests
         Assert.False(p.Observe(true, 10, 1003, true));
     }
     [Theory] [InlineData(false, true)] [InlineData(true, false)]
-    public void UnreliableInputOrPauseOrDisableCancels(bool reliable, bool allowed)
+    public void UnreliableInputOrDisallowedDisplayCancels(bool reliable, bool allowed)
     {
         var p = new PreviewSession(); p.Request(10, 1000, null);
         Assert.False(p.Observe(reliable, 10, 1001, allowed));

@@ -25,11 +25,11 @@ public sealed class VeilActivationPolicy
 
     public VeilMode Evaluate(
         IdleObservation observation,
-        bool isPaused,
+        bool suppressActivation,
         bool previewRequested,
         bool externalProtectionActive = false)
     {
-        if (externalProtectionActive || isPaused || !observation.IsReliable)
+        if (externalProtectionActive || suppressActivation || !observation.IsReliable)
         {
             return VeilMode.Hidden;
         }

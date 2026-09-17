@@ -12,7 +12,6 @@ internal sealed class TrayIconHost : IDisposable
     private readonly Action _exitApplication;
     private readonly Forms.NotifyIcon _notifyIcon;
     private readonly Icon _icon;
-    private readonly Forms.ToolStripMenuItem _pauseItem;
     private readonly Forms.ToolStripMenuItem _startAtLoginItem;
     private bool _disposed;
 
@@ -26,12 +25,6 @@ internal sealed class TrayIconHost : IDisposable
         _exitApplication = exitApplication;
 
         _icon = CreateEmeraldIcon();
-        _pauseItem = new Forms.ToolStripMenuItem("暂停本次会话")
-        {
-            Checked = controller.IsPaused,
-        };
-        _pauseItem.Click += (_, _) => TogglePause();
-
         _startAtLoginItem = new Forms.ToolStripMenuItem("登录 Windows 时启动")
         {
             Checked = startAtLogin.IsEnabled(),
@@ -52,14 +45,12 @@ internal sealed class TrayIconHost : IDisposable
         menu.Items.Add(statusItem);
         menu.Items.Add(startNowItem);
         menu.Items.Add(previewItem);
-        menu.Items.Add(_pauseItem);
         menu.Items.Add(_startAtLoginItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
 
         menu.Opening += (_, _) =>
         {
-            _pauseItem.Checked = _controller.IsPaused;
             _startAtLoginItem.Checked = _startAtLogin.IsEnabled();
         };
         _notifyIcon = new Forms.NotifyIcon
@@ -83,13 +74,6 @@ internal sealed class TrayIconHost : IDisposable
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _icon.Dispose();
-    }
-
-    private void TogglePause()
-    {
-        var paused = !_controller.IsPaused;
-        _controller.SetPaused(paused);
-        _pauseItem.Checked = paused;
     }
 
     private void ToggleStartAtLogin()
@@ -125,11 +109,10 @@ internal sealed class TrayIconHost : IDisposable
         string target = presentation.GetProperty("eligibleTarget").GetString() ?? "当前没有可用的实体主屏，保持待命";
         string state = presentation.GetProperty("state").GetString() ?? "unknown";
         string text = $"原生泡泡：{(status.GetProperty("enabled").GetBoolean() ? "已开启" : "已禁用")}\n" +
-            $"会话暂停：{(_controller.IsPaused ? "是" : "否")}\n" +
             "范围：实体桌面屏；VDD 和仪表屏不显示屏保。\n" +
             $"目标：{target}\n空闲：{status.GetProperty("idleSeconds").GetDouble():0} 秒 / {_controller.ActivationDelay.TotalSeconds:0} 秒\n" +
             $"状态：{state}\n" +
-            "快捷键：Ctrl+Win+E 立即启动；键鼠输入、暂停或退出均会撤掉屏保；不锁屏、不停止动态壁纸。";
+            "快捷键：Ctrl+Win+E 立即启动；键鼠输入、禁用或退出均会撤掉屏保；不锁屏、不停止动态壁纸。";
         if (presentation.GetProperty("lastFailure").GetString() is { Length: > 0 } failure)
             text += "\n最近一次失败：" + failure;
         _ = System.Windows.MessageBox.Show(text, "Emerald Veil 状态", MessageBoxButton.OK, MessageBoxImage.Information);

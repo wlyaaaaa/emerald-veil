@@ -189,9 +189,12 @@ public sealed class RuntimeContractSourceTests
         Assert.Contains("AreImmediateDisplayChordKeysHeld", controller);
         Assert.Contains("Ctrl+Win+E", tray);
         Assert.Contains("RequestImmediateDisplay()", tray);
-        Assert.Contains("_isPaused", controller);
-        Assert.DoesNotContain("_isPaused = true", controller);
+        Assert.DoesNotContain("_isPaused", controller);
+        Assert.DoesNotContain("SetPaused", controller);
         Assert.Contains("if (NativeBubblesSettings.IsEnabled()) _ = NativeBubblesSettings.EnsureRuntimePolicy();", app);
+        Assert.DoesNotContain("\"pause\"", app);
+        Assert.DoesNotContain("\"resume\"", app);
+        Assert.DoesNotContain("暂停本次会话", tray);
     }
 
     private static string FindRepositoryRoot()
