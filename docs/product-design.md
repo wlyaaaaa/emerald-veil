@@ -41,15 +41,23 @@ The existing tray offers status/target/idle/last failure, true “start screen s
 | same | `ScreenSaveActive` | `0`, REG_SZ |
 | same | `ScreenSaverIsSecure` | `0`, REG_SZ |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Screensavers\Bubbles` | `Radius` | `1130000000`, REG_DWORD |
+| same Bubbles key | `ShowBubbles` | `1`, REG_DWORD |
+| same Bubbles key | `MaterialGlass` | `1`, REG_DWORD |
 | `HKCU\Software\EmeraldVeil` | `NativeBubblesEnabled` | `1` enabled, `0` explicitly disabled, REG_DWORD |
 
 Windows' own automatic trigger stays off to prevent a competing screen saver. **This is not the same as disabling Emerald Veil.** The app's enabled flag and direct `HKCU\...\Run` value `Emerald Veil Native Bubbles` remain active. A normal login starts the app enabled; there is no separate session-pause state. The app checks runtime active/timeout/secure settings every 30 seconds and repairs only observed drift to false/360/false. The native radius is an undocumented Windows implementation detail; the app does not derive size or density from DPI, monitor inches or a replacement renderer, and updates require real visual verification.
 
-The first Enable flushes exact registry presence/kind/value and runtime state to the durable local `native-bubbles-preimage.json`; repeated enables validate but never overwrite it. Restore supports the existing v1/v2 preimages. Disable first prevents relaunch by clearing the enabled flag and Windows automatic trigger, then stops matching system-path renderers only in the current user session. Cleanup failure must not roll the flags back to enabled. Remove deletes only the owned startup registration and installation. Installation stages and hashes the single executable, and rollback can restore `.previous` only if the current attempt actually replaced the target; an unrelated older backup is never used after a pre-replacement failure.
+The first Enable flushes exact registry presence/kind/value and runtime state to the durable local `native-bubbles-preimage.json`; repeated enables validate but never overwrite it. Restore supports the existing v1/v2/v3/v4 preimages. Migration preserves the original value of each newly managed setting before first write. Disable first prevents relaunch by clearing the enabled flag and Windows automatic trigger, then stops matching system-path renderers only in the current user session. Cleanup failure must not roll the flags back to enabled. Remove deletes only the owned startup registration and installation. Installation stages and hashes the single executable, and rollback can restore `.previous` only if the current attempt actually replaced the target; an unrelated older backup is never used after a pre-replacement failure.
 
 ## Blackout coordination
 
 A blackout owner holds the lifetime marker `Local\EmeraldVeil.ExternalProtectionPause` with `initiallyOwned:false`; no wait or ReleaseMutex is required. A legacy unscoped marker excludes all targets. A scoped per-monitor marker excludes that monitor. The shared idle clock continues; removing the last marker returns to the normal target/idle policy. No blackout marker changes the enabled flag, startup registration, screen-saver timeout or topology. The physical-only policy means an excluded physical screen does not redirect Bubbles to VDD.
+
+## Deferred visual refinements
+
+A left-edge background wrap or offset can still occur with Wallpaper Engine on a multi-display desktop. Exact source-client geometry and DWM sampling have a tested candidate, but it has not completed publish-build, deployment and physical-screen acceptance; it is not part of the installed runtime. Do not describe the defect as fixed, conceal it with a mask, or apply a universal 200-pixel offset without checking the actual material.
+
+A modest native Bubbles speed increase is also deferred. The shipped profile does not manage `TurbulenceSpeed` or `TurbulenceForce`; no custom renderer, binary patch or unverified motion preset is shipped. Resume these refinements only for an explicit follow-up, not through a new automatic task. Deferral closes the bounded maintenance scope, not the missing visual acceptance.
 
 ## Acceptance and limits
 
