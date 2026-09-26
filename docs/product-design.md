@@ -30,6 +30,19 @@ Disable, unreliable input, target exclusion and meaningful activity outrank ever
 
 The existing tray offers status/target/idle/last failure, true “start screen saver now”, bounded preview and per-user startup. There is deliberately no pause or resident-exit item: the sole resident owns `Ctrl+Win+E`, so casually terminating it would silently disable the shortcut. The resident registers the same executable with Windows application restart for unexpected crash/hang or Restart Manager recovery; this adds no second process, service or task. Double-clicking the tray icon starts the true screen saver. `Ctrl+Win+E` does the same through the already-required `WH_KEYBOARD_LL` observer; no second hotkey service/task is installed. The exact chord is consumed, then the controller waits for every chord key to be released and for a 250 ms stable-input interval before baselining, so its own key-up cannot dismiss the new presentation. `--status` uses a bounded current-user/current-session named pipe and does not create a missing controller. No service, new task, network listener, persistent telemetry or extra watchdog is introduced.
 
+## Source install and removal
+
+Windows 11 with PowerShell 7 is the tested target; building the app also needs the .NET 10 SDK. Run these from the repository root without administrator rights:
+
+```powershell
+dotnet publish .\src\EmeraldVeil.App\EmeraldVeil.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\artifacts\publish\win-x64
+pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Install
+pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Enable
+pwsh -NoProfile -File .\scripts\Set-NativeBubbles.ps1 -Action Verify
+```
+
+`Disable` stops the overlay while keeping Windows' automatic screen-saver trigger off. `Install-EmeraldVeil.ps1 -Action Remove` uninstalls the owned resident; `Set-NativeBubbles.ps1 -Action Restore` restores the exact first-enable machine preimage. The static wallpaper is independently applied and verified with `Set-WindowsBackground.ps1` as described in [Windows background recovery](windows-background.md).
+
 ## Windows configuration and restoration
 
 `Set-NativeBubbles.ps1 -Action Enable` maintains the following per-user values and reads back their types and runtime state:
