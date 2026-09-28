@@ -6,4 +6,6 @@
 4. 坏了怎么提醒我：托盘图标里能看最近失败，没有自动提醒，出问题直接跟 AI 说。
 5. 让 AI 做什么：检查屏保和壁纸、排查异常、停用或换机恢复；保留现有的动态壁纸软件。
 
+不发安装包：按 [产品说明](docs/product-design.md) 从源码安装当前版本。
+
 安装与产品约定见 [产品说明](docs/product-design.md)，壁纸恢复见 [壁纸说明](docs/windows-background.md)，AI 维护规则见 [AGENTS.md](AGENTS.md)。
