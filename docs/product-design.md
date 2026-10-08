@@ -32,6 +32,8 @@ The existing tray offers status/target/idle/last failure, true “start screen s
 
 ## Source install and removal
 
+The single current lifecycle receipt is `%LOCALAPPDATA%\EmeraldVeil\last-result.json` (`emerald-veil.result.v1`): `reason_zh` explains startup, exit, unhandled exceptions, or a missing resident confirmed by `--status`. A successful startup is not visual acceptance; forced termination or power loss can only be recognized by a subsequent live status check. Existing caught presentation errors remain available through `--status`.
+
 Windows 11 with PowerShell 7 is the tested target; building the app also needs the .NET 10 SDK. Run these from the repository root without administrator rights:
 
 ```powershell

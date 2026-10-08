@@ -11,6 +11,8 @@ public partial class App : System.Windows.Application
     private const string SingletonName = @"Local\EmeraldVeil.Singleton";
     private Mutex? _singleton;
     private bool _ownsSingleton;
+    private string? _residentResultPath;
+    private string? _residentFailure;
     private VeilWindow? _veilWindow;
     private VeilController? _controller;
     private TrayIconHost? _trayIcon;
@@ -47,13 +49,19 @@ public partial class App : System.Windows.Application
             }
             return;
         }
+        _residentResultPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "EmeraldVeil", "last-result.json");
         if (command is "status")
         {
-            WriteCommandResponse("{\"status\":\"not-running\"}");
+            _residentFailure = "屏保常驻程序未运行，自动屏保和快捷键不可用";
+            ResidentResult.TryWrite(_residentResultPath, "failed", _residentFailure);
+            WriteCommandResponse(JsonSerializer.Serialize(new { status = "not-running", reason_zh = _residentFailure }));
             Shutdown(2);
             return;
         }
 
+        DispatcherUnhandledException += (_, args) => RecordFailure(args.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, args) => RecordFailure(args.ExceptionObject as Exception);
         // The resident is the sole hotkey owner. Ask Windows to restart this same
         // executable after an unexpected crash/hang or Restart Manager event; normal
         // shutdown is not restarted and no second helper/service/task is introduced.
@@ -79,6 +87,7 @@ public partial class App : System.Windows.Application
         _controller.Start();
         if (command == "show-now") _controller.RequestImmediateDisplay();
         else if (command == "preview") _controller.RequestPreview();
+        ResidentResult.TryWrite(_residentResultPath, "success", "屏保常驻程序已启动");
     }
 
     private string HandleCommand(string command)
@@ -119,6 +128,8 @@ public partial class App : System.Windows.Application
         if (_controller is not null) _controller.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _veilWindow?.Dispose();
         _inputObserver?.Dispose();
+        if (_ownsSingleton && _residentResultPath is not null && _residentFailure is null)
+            ResidentResult.TryWrite(_residentResultPath, "stopped", "屏保常驻程序已退出");
         if (_singleton is not null)
         {
             if (_ownsSingleton) _singleton.ReleaseMutex();
@@ -127,6 +138,8 @@ public partial class App : System.Windows.Application
         base.OnExit(e);
     }
 
+    private void RecordFailure(Exception? exception) => ResidentResult.TryWrite(_residentResultPath!, "failed",
+        _residentFailure = "屏保常驻程序异常退出：" + (exception?.Message ?? "未知异常"));
     private bool TryHandleMaintenanceCommand(IReadOnlyCollection<string> arguments, StartAtLoginService startAtLogin)
     {
         try
