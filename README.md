@@ -8,4 +8,6 @@
 
 不发安装包：按 [产品说明](docs/product-design.md) 从源码安装当前版本。
 
+默认运行 `pwsh -NoProfile -File .\scripts\Install-EmeraldVeil.ps1 -Action Install` 会先用 .NET 10 SDK 构建当前源码再安装；显式指定 `-SourcePath` 时直接使用该文件。
+
 安装与产品约定见 [产品说明](docs/product-design.md)，壁纸恢复见 [壁纸说明](docs/windows-background.md)，AI 维护规则见 [AGENTS.md](AGENTS.md)。

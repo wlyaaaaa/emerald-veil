@@ -277,6 +277,15 @@ switch ($Action) {
             throw 'Refusing to install from a kill-on-close job: any resident child would be terminated when this installer process exits. Run the installer from a normal interactive PowerShell or an out-of-job user-session deployment broker.'
         }
 
+        if (-not $PSBoundParameters.ContainsKey('SourcePath')) {
+            $projectPath = Join-Path $PSScriptRoot '..\src\EmeraldVeil.App\EmeraldVeil.App.csproj'
+            $publishDirectory = Split-Path -Parent $SourcePath
+            & dotnet publish $projectPath -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $publishDirectory | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+                throw "Publishing Emerald Veil failed with exit code $LASTEXITCODE."
+            }
+        }
+
         $resolvedSource = [System.IO.Path]::GetFullPath($SourcePath)
         if (-not (Test-Path -LiteralPath $resolvedSource -PathType Leaf)) {
             throw "Published executable is missing: $resolvedSource"

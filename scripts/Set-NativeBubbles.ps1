@@ -7,7 +7,7 @@ param(
         Join-Path $env:LOCALAPPDATA 'EmeraldVeil\native-bubbles-preimage.json'
     ),
 
-    [string]$LegacyExecutable = (
+    [string]$Executable = (
         Join-Path $env:LOCALAPPDATA 'Programs\EmeraldVeil\EmeraldVeil.exe'
     )
 )
@@ -28,7 +28,7 @@ $watchdogValueName = 'Emerald Veil Native Bubbles'
 $legacyOwnerName = 'StartupExecutable'
 $watchdogEnabledName = 'NativeBubblesEnabled'
 $bubblesExecutable = Join-Path $env:WINDIR 'System32\Bubbles.scr'
-$expectedLegacyCommand = '"{0}"' -f ([IO.Path]::GetFullPath($LegacyExecutable))
+$expectedWatchdogCommand = '"{0}"' -f ([IO.Path]::GetFullPath($Executable))
 $radiusDword = [uint32]1130000000
 $timeoutSeconds = [uint32]360
 $utf8NoBom = [Text.UTF8Encoding]::new($false)
@@ -197,11 +197,7 @@ function Assert-StateSnapshot {
     param([Parameter(Mandatory)][object]$Snapshot)
 
     $schema = [string]$Snapshot.schema
-    if ($schema -notin @(
-            'emerald-veil.native-bubbles-preimage.v1',
-            'emerald-veil.native-bubbles-preimage.v2',
-            'emerald-veil.native-bubbles-preimage.v3',
-            'emerald-veil.native-bubbles-preimage.v4')) {
+    if ($schema -ne 'emerald-veil.native-bubbles-preimage.v4') {
         throw 'Native Bubbles preimage schema is not supported.'
     }
 
@@ -214,16 +210,10 @@ function Assert-StateSnapshot {
         [pscustomobject]@{ path = $runPath; name = $legacyValueName }
         [pscustomobject]@{ path = $approvedPath; name = $legacyValueName }
         [pscustomobject]@{ path = $ownerPath; name = $legacyOwnerName }
+        [pscustomobject]@{ path = $ownerPath; name = $watchdogEnabledName }
+        [pscustomobject]@{ path = $bubblesPath; name = 'ShowBubbles' }
+        [pscustomobject]@{ path = $bubblesPath; name = 'MaterialGlass' }
     )
-    if ($schema -in @('emerald-veil.native-bubbles-preimage.v2','emerald-veil.native-bubbles-preimage.v3','emerald-veil.native-bubbles-preimage.v4')) {
-        $expected += [pscustomobject]@{ path = $ownerPath; name = $watchdogEnabledName }
-    }
-    if ($schema -in @('emerald-veil.native-bubbles-preimage.v3','emerald-veil.native-bubbles-preimage.v4')) {
-        $expected += [pscustomobject]@{ path = $bubblesPath; name = 'ShowBubbles' }
-    }
-    if ($schema -eq 'emerald-veil.native-bubbles-preimage.v4') {
-        $expected += [pscustomobject]@{ path = $bubblesPath; name = 'MaterialGlass' }
-    }
     $actual = @($Snapshot.registry_values)
     if ($actual.Count -ne $expected.Count) {
         throw 'Native Bubbles preimage does not contain the expected registry value set.'
@@ -283,13 +273,6 @@ function Assert-StateMatchesSnapshot {
             throw "Registry value did not restore: $($expectedValue.path)\\$($expectedValue.name)"
         }
     }
-
-    if ([string]$Expected.schema -eq 'emerald-veil.native-bubbles-preimage.v1') {
-        $legacyFlag = Get-RegistryValueSnapshot -Path $ownerPath -Name $watchdogEnabledName
-        if ($legacyFlag.exists) {
-            throw 'The project-owned watchdog flag remained after restoring a v1 preimage.'
-        }
-    }
 }
 
 function Get-StateSnapshot {
@@ -331,13 +314,6 @@ function Restore-StateSnapshot {
     foreach ($value in @($Snapshot.registry_values)) {
         Set-RegistryValueSnapshot -Snapshot $value
     }
-    if ([string]$Snapshot.schema -eq 'emerald-veil.native-bubbles-preimage.v1' -and
-        (Test-Path -LiteralPath $ownerPath)) {
-        Remove-ItemProperty `
-            -LiteralPath $ownerPath `
-            -Name $watchdogEnabledName `
-            -ErrorAction SilentlyContinue
-    }
     Assert-StateMatchesSnapshot -Expected $Snapshot
 }
 
@@ -348,29 +324,6 @@ function Save-DurablePreimage {
     if (Test-Path -LiteralPath $PreimagePath) {
         $existing = Get-Content -LiteralPath $PreimagePath -Raw | ConvertFrom-Json
         Assert-StateSnapshot -Snapshot $existing
-        if ($existing.schema -ne 'emerald-veil.native-bubbles-preimage.v4') {
-            # Preserve every old value. Only newly managed visual profile fields
-            # are captured before first ownership; v1's enabled flag was absent.
-            if ($existing.schema -eq 'emerald-veil.native-bubbles-preimage.v1') {
-                $existing.registry_values += [pscustomobject]@{
-                    path=$ownerPath; name=$watchdogEnabledName; exists=$false; kind=$null; value=$null
-                }
-            }
-            if ($existing.schema -ne 'emerald-veil.native-bubbles-preimage.v3') {
-                $existing.registry_values += Get-RegistryValueSnapshot -Path $bubblesPath -Name 'ShowBubbles'
-            }
-            $existing.registry_values += Get-RegistryValueSnapshot -Path $bubblesPath -Name 'MaterialGlass'
-            $existing.schema = 'emerald-veil.native-bubbles-preimage.v4'
-            Assert-StateSnapshot -Snapshot $existing
-            $original = "$PreimagePath.before-v4"
-            if (-not (Test-Path -LiteralPath $original)) { Copy-Item -LiteralPath $PreimagePath -Destination $original }
-            $upgrade = "$PreimagePath.$([guid]::NewGuid().ToString('N')).tmp"
-            try {
-                [IO.File]::WriteAllText($upgrade, ($existing | ConvertTo-Json -Depth 8), $utf8NoBom)
-                [IO.File]::Move($upgrade, $PreimagePath, $true)
-            }
-            finally { if (Test-Path -LiteralPath $upgrade) { Remove-Item -LiteralPath $upgrade -Force } }
-        }
         return
     }
 
@@ -415,20 +368,6 @@ function Save-DurablePreimage {
     }
 }
 
-function Get-LegacyRunValue {
-    if (-not (Test-Path -LiteralPath $runPath)) {
-        return $null
-    }
-    $item = Get-ItemProperty `
-        -LiteralPath $runPath `
-        -Name $legacyValueName `
-        -ErrorAction SilentlyContinue
-    if ($null -eq $item) {
-        return $null
-    }
-    return $item.PSObject.Properties[$legacyValueName].Value
-}
-
 function Get-WatchdogRunValue {
     if (-not (Test-Path -LiteralPath $runPath)) {
         return $null
@@ -441,37 +380,6 @@ function Get-WatchdogRunValue {
         return $null
     }
     return $item.PSObject.Properties[$watchdogValueName].Value
-}
-
-function Disable-LegacyStartup {
-    $runValue = Get-LegacyRunValue
-    if ($null -eq $runValue) {
-        return
-    }
-    if (-not [string]::Equals(
-            [string]$runValue,
-            $expectedLegacyCommand,
-            [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to remove a foreign '$legacyValueName' Run value: $runValue"
-    }
-    Remove-ItemProperty -LiteralPath $runPath -Name $legacyValueName -ErrorAction Stop
-    Remove-ItemProperty -LiteralPath $approvedPath -Name $legacyValueName -ErrorAction SilentlyContinue
-
-    # The owner marker is shared by the old and new executable. Preserve it
-    # when the new watchdog Run value is already present.
-    if ($null -eq (Get-WatchdogRunValue)) {
-        $owner = Get-RegistryValueSnapshot -Path $ownerPath -Name $legacyOwnerName
-        if ($owner.exists -and
-            [string]::Equals(
-                [string]$owner.value,
-                [IO.Path]::GetFullPath($LegacyExecutable),
-                [StringComparison]::OrdinalIgnoreCase)) {
-            Remove-ItemProperty -LiteralPath $ownerPath -Name $legacyOwnerName -ErrorAction SilentlyContinue
-        }
-    }
-    if ($null -ne (Get-LegacyRunValue)) {
-        throw "The '$legacyValueName' Run value remained after removal."
-    }
 }
 
 function Get-OwnedNativeBubblesProcess {
@@ -615,17 +523,9 @@ function Get-NativeBubblesStatus {
     $watchdogRun = Get-WatchdogRunValue
     if (-not [string]::Equals(
             [string]$watchdogRun,
-            $expectedLegacyCommand,
+            $expectedWatchdogCommand,
             [StringComparison]::OrdinalIgnoreCase)) {
         $problems.Add('The Emerald Veil watchdog Run entry is missing or points elsewhere.')
-    }
-    if ($null -ne (Get-LegacyRunValue)) {
-        $problems.Add('The legacy Emerald Veil Run entry is still enabled.')
-    }
-    $legacyApproval = Get-RegistryValueSnapshot -Path $approvedPath -Name $legacyValueName
-    $legacyOwner = Get-RegistryValueSnapshot -Path $ownerPath -Name $legacyOwnerName
-    if ($legacyApproval.exists -or ($legacyOwner.exists -and $null -eq (Get-WatchdogRunValue))) {
-        $problems.Add('Legacy Emerald Veil startup metadata is still present.')
     }
     if ($problems.Count -gt 0) {
         throw ($problems -join [Environment]::NewLine)
@@ -650,7 +550,6 @@ function Get-NativeBubblesStatus {
             [BitConverter]::GetBytes([uint32]$radius),
             0
         )
-        legacy_startup_enabled = $false
         preimage = [IO.Path]::GetFullPath($PreimagePath)
     }
 }
@@ -687,7 +586,6 @@ switch ($Action) {
         $operationPreimage = Get-StateSnapshot
         Save-DurablePreimage -Snapshot $operationPreimage
         try {
-            Disable-LegacyStartup
             Set-NativeRegistryConfiguration
             [EmeraldVeil.NativeScreenSaver]::SetState($false, $timeoutSeconds, $false, $true)
             Get-NativeBubblesStatus
