@@ -1,5 +1,7 @@
 # Emerald Veil 项目约定
 
+- 本人说“屏保”或“泡泡屏保”，默认就是本项目这个透明泡泡浮层，不是 TURZX-SideScreen 副屏。
+
 - 产品行为和未完成的实体屏验收以 `docs/product-design.md` 为准；静态壁纸及换机恢复以 `docs/windows-background.md` 为准。两者是独立功能，不用其中一个功能的检查冒充另一个的画面验收。
 - 泡泡只在确认身份的实体桌面屏显示，使用 Windows 安装的原版 `Bubbles.scr /s`、原生玻璃与动画。VDD、仪表屏、身份不明或被遮蔽的屏幕都不作为目标；实体屏不可用时保持启用但不启动画面。
 - 只在启动时把 VDD 选定的 Wallpaper Engine 材料或 Windows 壁纸合成到实体屏，再让原版泡泡取得快照。不连续抓取 VDD，不替换绘制、修补 Windows 组件或全局控制 Wallpaper Engine；不要把入口快照说成动态透明。
