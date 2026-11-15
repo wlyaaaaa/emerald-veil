@@ -28,7 +28,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Set-WindowsBac
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Set-WindowsBackground.ps1 -Action Verify
 ```
 
-所有屏幕与锁屏都符合选图时返回 `status: verified` 和退出码 0；`desktop.monitors` 列出每块屏幕的连接状态、路径和匹配结果，否则返回漂移或实际系统错误。桌面共同底图和每屏图片均校验 SHA256。锁屏以系统当前图像流的解码画面为准，沿用平均色差不超过 3 的重编码容差；原始路径仅作诊断，不要求仍存在或位于项目图片目录。任一桌面图片不符、锁屏画面不符或固定图片模式改变都仍返回漂移。系统接口回读不等于实际进入锁屏后的视觉验收；脚本不会锁定电脑。
+所有屏幕与锁屏都符合选图时返回 `status: verified` 和退出码 0；`desktop.monitors` 列出每块屏幕的连接状态、路径和匹配结果，否则返回漂移或实际系统错误。连接状态通过当前会话的显示设备接口核对，不依赖离线屏可能报错的矩形查询；Windows 记住的离线屏仍逐块读取并校验壁纸。桌面共同底图和每屏图片均校验 SHA256。锁屏以系统当前图像流的解码画面为准，沿用平均色差不超过 3 的重编码容差；原始路径仅作诊断，不要求仍存在或位于项目图片目录。任一桌面图片不符、锁屏画面不符或固定图片模式改变都仍返回漂移。系统接口回读不等于实际进入锁屏后的视觉验收；脚本不会锁定电脑。
 
 ## 原设置与现有应用
 

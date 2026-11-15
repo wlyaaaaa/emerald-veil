@@ -17,8 +17,9 @@ Add-Type @'
 public static class EmeraldBackgroundReadback {
     public static string Common, Monitor;
     public static double Error;
+    public static bool Connected = true;
     public static string DesktopPath() { return Common; }
-    public static object[] MonitorPaths() { return new[] { new { devicePath="fixture", connected=true, path=Monitor } }; }
+    public static object[] MonitorPaths() { return new[] { new { devicePath="fixture", connected=Connected, path=Monitor } }; }
     public static double ImageError(string source, byte[] current) { return Error; }
 }
 namespace Windows.System.UserProfile {
@@ -47,6 +48,11 @@ try {
     [EmeraldBackgroundReadback]::Common=$different; Assert-State $false $true 'changed common image'
     [EmeraldBackgroundReadback]::Common=$legacy; [EmeraldBackgroundReadback]::Monitor=$different
     Assert-State $false $true 'changed per-monitor image'
+    [EmeraldBackgroundReadback]::Connected=$false
+    Assert-State $false $true 'detached per-monitor image still checked'
+    [EmeraldBackgroundReadback]::Monitor=$legacy
+    Assert-State $true $true 'matching detached per-monitor image'
+    [EmeraldBackgroundReadback]::Connected=$true
     [EmeraldBackgroundReadback]::Monitor=(Join-Path $root 'missing.png'); Assert-State $false $true 'missing per-monitor image'
     [EmeraldBackgroundReadback]::Monitor=$legacy; [EmeraldBackgroundReadback]::Error=20
     Assert-State $true $false 'different decoded lock-screen image'

@@ -23,6 +23,7 @@ Add-Type -AssemblyName System.Drawing
 
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -32,16 +33,38 @@ interface IDesktopWallpaper {
     [return: MarshalAs(UnmanagedType.LPWStr)] string GetWallpaper([MarshalAs(UnmanagedType.LPWStr)] string monitorId);
     [return: MarshalAs(UnmanagedType.LPWStr)] string GetMonitorDevicePathAt(uint index);
     uint GetMonitorDevicePathCount();
-    [PreserveSig] int GetMonitorRECT([MarshalAs(UnmanagedType.LPWStr)] string monitorId, out MonitorRect rect);
 }
-[StructLayout(LayoutKind.Sequential)]
-struct MonitorRect { public int Left, Top, Right, Bottom; }
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+struct DisplayDevice {
+    public int Size;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string Name;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Description;
+    public uint Flags;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Id;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Key;
+}
 public sealed class MonitorBackground {
     public string devicePath;
     public string path;
     public bool connected;
 }
 public static class EmeraldBackgroundReadback {
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool EnumDisplayDevices(string device, uint index, ref DisplayDevice info, uint flags);
+    private static HashSet<string> AttachedMonitorIds() {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (uint i = 0; ; i++) {
+            var adapter = new DisplayDevice { Size = Marshal.SizeOf(typeof(DisplayDevice)) };
+            if (!EnumDisplayDevices(null, i, ref adapter, 0)) break;
+            if ((adapter.Flags & 1) == 0) continue; // DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
+            for (uint j = 0; ; j++) {
+                var monitor = new DisplayDevice { Size = Marshal.SizeOf(typeof(DisplayDevice)) };
+                if (!EnumDisplayDevices(adapter.Name, j, ref monitor, 1)) break; // EDD_GET_DEVICE_INTERFACE_NAME
+                if ((monitor.Flags & 1) != 0) ids.Add(monitor.Id);
+            }
+        }
+        return ids;
+    }
     private static IDesktopWallpaper OpenDesktop() {
         return (IDesktopWallpaper)Activator.CreateInstance(Type.GetTypeFromCLSID(
             new Guid("C2CF3110-460E-4FC1-B9D0-8A1C0C9CC4BD")));
@@ -70,15 +93,15 @@ public static class EmeraldBackgroundReadback {
     public static MonitorBackground[] MonitorPaths() {
         var desktop = OpenDesktop();
         try {
+            // Wallpaper history includes detached monitors. GetMonitorRECT can
+            // return E_FAIL for those; geometry is not needed to read their image.
+            var attached = AttachedMonitorIds();
             var monitors = new MonitorBackground[desktop.GetMonitorDevicePathCount()];
             for (uint i = 0; i < monitors.Length; i++) {
                 string id = desktop.GetMonitorDevicePathAt(i);
-                MonitorRect rect;
-                int result = desktop.GetMonitorRECT(id, out rect);
-                if (result < 0) Marshal.ThrowExceptionForHR(result);
                 monitors[i] = new MonitorBackground {
                     devicePath = id, path = desktop.GetWallpaper(id),
-                    connected = result == 0 && rect.Right > rect.Left && rect.Bottom > rect.Top
+                    connected = attached.Contains(id)
                 };
             }
             return monitors;
