@@ -4,6 +4,14 @@ namespace EmeraldVeil.Core.Tests;
 
 public sealed class WallpaperSelectionTests
 {
+    [Fact] public void StaticFallbackUsesOnlyASingleScreenWithoutAVdd()
+    {
+        const string physical = "//?/DISPLAY#SDC419D#panel";
+        const string vdd = "//?/DISPLAY#MTT1337#virtual";
+        Assert.Equal(physical, WallpaperSelection.SingleScreenFallback([physical]));
+        Assert.Null(WallpaperSelection.SingleScreenFallback([physical, vdd]));
+        Assert.Null(WallpaperSelection.SingleScreenFallback([vdd]));
+    }
     private static string Configuration(string monitor="//?/DISPLAY#MTT1337#example", string location="2") => """
     {"example-user":{"general":{"user":{"monitormap":{"@MONITOR@":{"location":@LOCATION@}}},
     "wallpaperconfig":{"selectedwallpapers":{"Monitor0":{"file":"D:/other/scene.pkg"},
