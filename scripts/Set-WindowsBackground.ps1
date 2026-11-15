@@ -171,9 +171,8 @@ function Get-ImageHash {
 
 function Test-InstalledImage {
     param([string]$Path)
-    return $Path -and [IO.Path]::GetFullPath($Path).StartsWith(
-        [IO.Path]::GetFullPath($imageDirectory).TrimEnd('\') + '\',
-        [StringComparison]::OrdinalIgnoreCase) -and (Get-ImageHash $Path) -eq $selection.sha256
+    # Existing copies remain valid wherever stored when their bytes match.
+    return $Path -and (Get-ImageHash $Path) -eq $selection.sha256
 }
 
 function Get-LockImageBytes {
@@ -204,7 +203,9 @@ function Get-CurrentState {
             @($rotating | Where-Object { $_.surface -eq 'desktop' }).Count -eq 0)
         desktopMonitors = $monitors
         lockScreenPath = $lockPath
-        lockScreenMatches = ((Test-InstalledImage $lockPath) -and $lockError -le 3 -and @($rotating | Where-Object { $_.surface -eq 'lockScreen' }).Count -eq 0)
+        # The original URI can be a missing Wallpaper Engine override; the
+        # decoded stream is the current lock-screen image, not that source path.
+        lockScreenMatches = ($lockError -le 3 -and @($rotating | Where-Object { $_.surface -eq 'lockScreen' }).Count -eq 0)
         lockScreenPixelMeanError = [Math]::Round($lockError, 4)
     }
 }

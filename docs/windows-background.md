@@ -20,7 +20,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Set-WindowsBac
 - `assets/windows-background.json`：选图、校验值、来源尺寸和处理方式。
 - `assets/verdant-rain-4k.png`：已验收静帧，直接使用，不重新生成。
 
-脚本把静帧复制到当前用户“图片”已知文件夹下的 `EmeraldVeil` 子目录，因此设置后搬动项目目录不影响当前壁纸。它通过 Windows 桌面接口和锁屏接口设置图片，明确选择固定图片模式，并通过 `IDesktopWallpaper` 设置共同底图、清除每屏旧选图，逐块回读已连接显示器及 Windows 仍记得的离线显示器。VDD 无需固定设备编号，也不改变显示器连接或排列。只有所有屏幕的图像内容、固定模式和持久副本引用以及锁屏均正确时才跳过；确有漂移才重设，并使用新输入文件名避免 Windows 缓存旧图。
+需要应用时，脚本把静帧复制到当前用户“图片”已知文件夹下的 `EmeraldVeil` 子目录，因此设置后搬动项目目录不影响当前壁纸。它通过 Windows 桌面接口和锁屏接口设置图片，明确选择固定图片模式，并通过 `IDesktopWallpaper` 设置共同底图、清除每屏旧选图，逐块回读已连接显示器及 Windows 仍记得的离线显示器。VDD 无需固定设备编号，也不改变显示器连接或排列。所有屏幕的图像内容、固定模式以及锁屏均正确时跳过；已有副本（包括旧版 `%LOCALAPPDATA%\EmeraldVeil\windows-background` 中的副本）只要可读取且 SHA256 符合选图清单，就不因保存位置不同而重设。确有漂移才重设，并使用新输入文件名避免 Windows 缓存旧图。
 
 只检查而不改动：
 
@@ -28,12 +28,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Set-WindowsBac
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Set-WindowsBackground.ps1 -Action Verify
 ```
 
-所有屏幕与锁屏都符合选图时返回 `status: verified` 和退出码 0；`desktop.monitors` 列出每块屏幕的连接状态、路径和匹配结果，否则返回漂移或实际系统错误。锁屏还会读取图像内容并比较解码后的画面，避免只看路径或把缓存重编码误判成失败。系统接口回读不等于实际进入锁屏后的视觉验收；脚本不会锁定电脑。
+所有屏幕与锁屏都符合选图时返回 `status: verified` 和退出码 0；`desktop.monitors` 列出每块屏幕的连接状态、路径和匹配结果，否则返回漂移或实际系统错误。桌面共同底图和每屏图片均校验 SHA256。锁屏以系统当前图像流的解码画面为准，沿用平均色差不超过 3 的重编码容差；原始路径仅作诊断，不要求仍存在或位于项目图片目录。任一桌面图片不符、锁屏画面不符或固定图片模式改变都仍返回漂移。系统接口回读不等于实际进入锁屏后的视觉验收；脚本不会锁定电脑。
 
 ## 原设置与现有应用
 
 第一次应用前，在 `%LOCALAPPDATA%\EmeraldVeil\windows-background` 中保留 `before-first-apply.json`、原桌面图（可读取时）、每屏原图和原锁屏图片。已有记录仅补录此前没有采集的每屏设置，不覆盖原恢复信息。需要撤回时可在 Windows“设置 → 个性化”选回记录中的原图；这些机器私有记录不进入仓库，也不需要带到新电脑。
 
-Wallpaper Engine 的动画可以覆盖 Windows 底图，属于预期行为。如果以后主动启用了它的“覆盖系统壁纸”或“覆盖锁屏图”，对应原生图片可能再次改变；本脚本不改它的开关，也不在后台争抢。需要时重新运行 `Apply`。本入口不增加开机项、服务或定时任务。
+Wallpaper Engine 的动画可以覆盖 Windows 底图，属于预期行为。它的“覆盖系统壁纸”或“覆盖锁屏图”也可能更换原始路径；图片内容仍符合选图时核验通过，内容确实改变时才报漂移。本脚本不改它的开关，也不在后台争抢。需要恢复选图内容时重新运行 `Apply`。本入口不增加开机项、服务或定时任务。
 
 泡泡的“仅实体桌面屏”策略不改变本入口：VDD 静态底图仍参加逐屏校验。静态壁纸、系统锁屏和自动泡泡是不同功能，不显示自动泡泡不表示撤销该屏幕壁纸。
