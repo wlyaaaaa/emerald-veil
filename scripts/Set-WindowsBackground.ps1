@@ -186,7 +186,7 @@ function Get-LockImageBytes {
 function Get-CurrentState {
     $desktopPath = [EmeraldBackgroundReadback]::DesktopPath()
     $lockUri = [Windows.System.UserProfile.LockScreen]::OriginalImageFile
-    $lockPath = if ($lockUri.IsFile) { $lockUri.LocalPath } else { '' }
+    $lockPath = if ($null -ne $lockUri -and $lockUri.IsFile) { $lockUri.LocalPath } else { '' }
     $lockBytes = Get-LockImageBytes
     $lockError = [EmeraldBackgroundReadback]::ImageError($sourceImage, $lockBytes)
     $rotating = @(Get-PictureSelectors | Where-Object { -not $_.present -or $_.kind -ne 'DWord' -or $_.value -ne 0 })
@@ -265,7 +265,7 @@ function Save-Preimage {
         desktopBackup = $desktopBackup
         wallpaperStyle = $desktopKey.WallpaperStyle
         tileWallpaper = $desktopKey.TileWallpaper
-        lockScreenOriginalUri = $lockUri.AbsoluteUri
+        lockScreenOriginalUri = if ($null -ne $lockUri) { $lockUri.AbsoluteUri } else { $null }
         lockScreenBackup = $lockBackup
         pictureSelectors = @(Get-PictureSelectors)
         desktopMonitors = @(Get-MonitorPreimage)

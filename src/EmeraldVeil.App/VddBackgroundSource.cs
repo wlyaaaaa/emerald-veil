@@ -36,9 +36,13 @@ internal static class VddBackgroundSource
         Rectangle bounds = default;
         try
         {
-            var ids = Enumerable.Range(0, checked((int)desktop.GetMonitorDevicePathCount()))
-                .Select(index => desktop.GetMonitorDevicePathAt((uint)index))
-                .Where(id => id.Contains("#MTT1337#", StringComparison.OrdinalIgnoreCase)).ToArray();
+            var monitorIds = Enumerable.Range(0, checked((int)desktop.GetMonitorDevicePathCount()))
+                .Select(index => desktop.GetMonitorDevicePathAt((uint)index)).ToArray();
+            string? singleScreen = WallpaperSelection.SingleScreenFallback(monitorIds);
+            if (singleScreen is not null)
+                return new VddBackground(singleScreen, desktop.GetWallpaper(singleScreen),
+                    desktop.GetBackgroundColor(), desktop.GetPosition());
+            var ids = monitorIds.Where(id => id.Contains("#MTT1337#", StringComparison.OrdinalIgnoreCase)).ToArray();
             if (ids.Length != 1) throw new InvalidOperationException("A unique VDD wallpaper source is required.");
             string id = ids[0];
             if (desktop.GetMonitorRECT(id, out var rect) == 0)

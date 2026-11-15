@@ -3,6 +3,10 @@ namespace EmeraldVeil.Core;
 
 public sealed record WallpaperSelection(string Location, string File, string Properties)
 {
+    public static string? SingleScreenFallback(IReadOnlyList<string> monitorIds) =>
+        monitorIds.Count == 1 && !monitorIds[0].Contains("#MTT1337#", StringComparison.OrdinalIgnoreCase)
+            ? monitorIds[0] : null;
+
     public static WallpaperSelection? Read(string json, string user, string monitorId)
     {
         using var document = JsonDocument.Parse(json);
