@@ -11,7 +11,7 @@
     {"id":"status","label":"现在在干什么","source":"emerald.live","pointer":"/metrics/status","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"现在怎么没有泡泡，是屏幕不合适还是程序坏了？"},
     {"id":"enabled","label":"开关","source":"emerald.live","pointer":"/metrics/enabled","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"我让它开着，它还开着吗？"},
     {"id":"target","label":"有没有能放的显示器","source":"emerald.live","pointer":"/metrics/target","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"怎么没泡泡，是屏不合适还是坏了？"},
-    {"id":"hotkey","label":"快捷键能立刻叫出来","source":"emerald.live","pointer":"/metrics/hotkey","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"我按快捷键还能叫出它吗？","note":"注册状态，不等于已经按键并观察实体屏。"},
+    {"id":"hotkey","label":"快捷键已注册","source":"emerald.live","pointer":"/metrics/hotkey","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"快捷键注册成功了吗？","note":"注册状态，不等于已经按键并观察实体屏。"},
     {"id":"session","label":"这次开着以来","source":"emerald.live","pointer":"/metrics/session","time":"/at","scope":"/session_scope","mode":"live","unit":"","public":"same","stale_after":5,"about":"这几天它真试过吗、出过错吗？"},
     {"id":"last_failure","label":"上次出的什么错","source":"emerald.live","pointer":"/metrics/last_failure","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"hide_zero":true,"about":"是屏的事还是程序的事？","note":"出错数大于 0 才显示；仅输出人话，不含路径。"},
     {"id":"retry","label":"出错后还会自己再试吗","source":"emerald.live","pointer":"/metrics/retry","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"有了合适的屏它会不会自己恢复？"},
