@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $tokens=$null; $errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Set-WindowsBackground.ps1'),[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'The background script does not parse.' }
-foreach ($name in @('Get-ImageHash','Test-InstalledImage','Get-CurrentState')) {
+foreach ($name in @('Get-ImageHash','Test-InstalledImage','Get-CurrentState','Write-BackgroundLive')) {
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     if ($null -eq $function) { throw "Missing function: $name" }
     . ([scriptblock]::Create($function.Extent.Text))
@@ -61,6 +61,8 @@ try {
         $selector.value=1; Assert-State ($selector.surface -ne 'desktop') ($selector.surface -ne 'lockScreen') 'rotation enabled'
         $selector.value=0
     }
-    'Windows background: content, missing image and all three rotation checks passed. No Windows settings changed.'
+    $LiveOutput=Join-Path $root 'live.json'; Write-BackgroundLive (Get-CurrentState); Write-BackgroundLive $null
+    $live=Get-Content $LiveOutput -Raw | ConvertFrom-Json; if ($null -ne $live.metrics.background -or -not $live.note) { throw 'Live output replacement must preserve null and its reason.' }
+    'Windows background: content, rotation and live-output replacement checks passed. No Windows settings changed.'
 }
 finally { if (Test-Path -LiteralPath $root) { Get-ChildItem -LiteralPath $root -File | Remove-Item -Force; Remove-Item -LiteralPath $root -Force } }

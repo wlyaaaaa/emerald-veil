@@ -126,6 +126,7 @@ public partial class App : System.Windows.Application
         _commands?.Dispose();
         _trayIcon?.Dispose();
         if (_controller is not null) _controller.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        if (_controller is not null) LiveSnapshot.Stopped();
         _veilWindow?.Dispose();
         _inputObserver?.Dispose();
         if (_ownsSingleton && _residentResultPath is not null && _residentFailure is null)

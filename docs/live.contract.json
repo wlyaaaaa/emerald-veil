@@ -1,0 +1,38 @@
+{
+  "v": 1,
+  "id": "emerald-veil",
+  "name": "翠幕屏保",
+  "about": "电脑闲着时让显示器飘起彩色泡泡，顺带管黑猫壁纸和锁屏。",
+  "headline": "status",
+  "tasks": ["task-865383167431f808aa7dbd97"],
+  "skills": [],
+  "bindings_complete": true,
+  "metrics": [
+    {"id":"status","label":"现在在干什么","source":"emerald.live","pointer":"/metrics/status","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"现在怎么没有泡泡，是屏幕不合适还是程序坏了？"},
+    {"id":"enabled","label":"开关","source":"emerald.live","pointer":"/metrics/enabled","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"我让它开着，它还开着吗？"},
+    {"id":"target","label":"有没有能放的显示器","source":"emerald.live","pointer":"/metrics/target","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"怎么没泡泡，是屏不合适还是坏了？"},
+    {"id":"hotkey","label":"快捷键能立刻叫出来","source":"emerald.live","pointer":"/metrics/hotkey","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"我按快捷键还能叫出它吗？","note":"注册状态，不等于已经按键并观察实体屏。"},
+    {"id":"session","label":"这次开着以来","source":"emerald.live","pointer":"/metrics/session","time":"/at","scope":"/session_scope","mode":"live","unit":"","public":"same","stale_after":5,"about":"这几天它真试过吗、出过错吗？"},
+    {"id":"last_failure","label":"上次出的什么错","source":"emerald.live","pointer":"/metrics/last_failure","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"hide_zero":true,"about":"是屏的事还是程序的事？","note":"出错数大于 0 才显示；仅输出人话，不含路径。"},
+    {"id":"retry","label":"出错后还会自己再试吗","source":"emerald.live","pointer":"/metrics/retry","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"有了合适的屏它会不会自己恢复？"},
+    {"id":"background","label":"壁纸和锁屏还是选好的那张","source":"emerald.background","pointer":"/metrics/background","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"我的壁纸锁屏还是那张吗？","note":"null 表示查不到，不能当成零处不对；只在 Apply/Verify 时核验。"},
+    {"id":"consecutive_failures","label":"当前连续画面故障","source":"emerald.live","pointer":"/metrics/consecutive_failures","time":"/at","mode":"live","unit":"次","public":"same","stale_after":5,"about":"好奇","note":"目标或恢复状态变化会重置；零不等于从没出错。"},
+    {"id":"wallpaper_monitors","label":"核验时壁纸匹配的屏幕","source":"emerald.background","pointer":"/metrics/wallpaper_monitors","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"好奇","note":"包含 Windows 记住的离线屏幕，不是当前实体目标总数。"},
+    {"id":"docs_files","label":"自有文档文件","source":"emerald.static","pointer":"/metrics/docs_files","records":"/records/docs_files","time":"/at","mode":"static","unit":"份","public":"same","shape":"list","about":"好奇"},
+    {"id":"code_files","label":"自有代码文件","source":"emerald.static","pointer":"/metrics/code_files","records":"/records/code_files","time":"/at","mode":"static","unit":"份","public":"same","shape":"list","about":"好奇"},
+    {"id":"config_files","label":"自有配置文件","source":"emerald.static","pointer":"/metrics/config_files","records":"/records/config_files","time":"/at","mode":"static","unit":"份","public":"same","shape":"list","about":"好奇"},
+    {"id":"tracked_files","label":"Git 跟踪文件","source":"emerald.static","pointer":"/metrics/tracked_files","time":"/at","mode":"static","unit":"份","public":"same","about":"好奇"}
+  ],
+  "sections": [
+    {"id":"bubbles","label":"泡泡屏保","metrics":["status","enabled","target","hotkey","session","last_failure","retry"],"about":"开关、目标与本次常驻的实测状态。","note":"试放／出错只算这一次程序开着以来，起始时间见该行 scope；重启清零，不能写成一共，也不能算成功率。上次出的错不代表此刻还在错。"},
+    {"id":"background","label":"壁纸和锁屏","metrics":["background"],"about":"独立核验选定图片。","note":"泡泡状态不代替壁纸核验；这里只证明图片内容与设置，不代表已经亲眼看过锁屏。"},
+    {"id":"more-data","label":"更多数据","metrics":["consecutive_failures","wallpaper_monitors","docs_files","code_files","config_files","tracked_files"],"about":"好奇：恢复计数、核验范围和仓库文件构成。","note":"文件统计按需更新，带取数时刻、不因过一天报旧；点开才读取文件列表。"}
+  ],
+  "artifacts": {"source":"emerald.static","pointer":"/artifacts"},
+  "size": {"source":"emerald.static","pointer":"/size"},
+  "links": [
+    {"id":"intro","label":"项目介绍","href":"https://github.com/wlyaaaaa/emerald-veil#readme"},
+    {"id":"desktop-selection","label":"电脑壁纸选图说明","href":"https://github.com/wlyaaaaa/emerald-veil/blob/main/assets/windows-background.json"},
+    {"id":"mobile-selection","label":"手机壁纸选图说明","href":"https://github.com/wlyaaaaa/emerald-veil/blob/main/assets/mobile-wallpaper/README.md"}
+  ]
+}
