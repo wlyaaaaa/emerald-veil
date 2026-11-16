@@ -1,0 +1,293 @@
+{
+  "v": 1,
+  "scope": "按需统计 Git 跟踪的自有文档、源码和配置；不含生成物及第三方",
+  "metrics": {
+    "docs_files": 7,
+    "code_files": 47,
+    "config_files": 7,
+    "tracked_files": 67
+  },
+  "records": {
+    "docs_files": [
+      {
+        "text": "AGENTS.md",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "README.md",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "assets/mobile-wallpaper/README.md",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "docs/live.md",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "docs/product-design.md",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "docs/windows-background.md",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "experiments/verdant-rain/ART_DIRECTION.md",
+        "state_text": "已跟踪"
+      }
+    ],
+    "code_files": [
+      {
+        "text": "scripts/Install-EmeraldVeil.ps1",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "scripts/Set-NativeBubbles.ps1",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "scripts/Set-WindowsBackground.ps1",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "scripts/Test-NativeProfileMigration.ps1",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "scripts/Test-WindowsBackground.ps1",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "scripts/Update-LiveSnapshot.py",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/App.xaml",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/App.xaml.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/AssemblyInfo.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/DisplayTargetResolver.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/IdleInputSource.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/LowLevelInputObserver.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/NativeBubblesLauncher.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/NativeBubblesSettings.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/NativeMethods.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/SessionCommandChannel.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/StartAtLoginService.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/TrayIconHost.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/VddBackgroundSource.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/VeilController.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/VeilSurface.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/VeilWindow.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/WallpaperEngineBackground.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/DisplayTargetPolicy.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/ExternalProtectionPause.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/IdleObservation.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/IdleTimeline.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/InputActivityFilter.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/LaunchRecoveryPolicy.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/LiveSnapshot.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/PreviewSession.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/ResidentResult.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/VeilActivationPolicy.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/VeilModeReconciler.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/WallpaperSelection.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/DisplayTargetPolicyTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/ExternalProtectionPauseTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/IdleTimelineTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/InputActivityFilterTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/LaunchRecoveryPolicyTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/LiveSnapshotTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/PreviewSessionTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/ResidentResultTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/RuntimeContractSourceTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/VeilActivationPolicyTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/VeilModeReconcilerTests.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/WallpaperSelectionTests.cs",
+        "state_text": "已跟踪"
+      }
+    ],
+    "config_files": [
+      {
+        "text": ".gitattributes",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": ".gitignore",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "EmeraldVeil.slnx",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/EmeraldVeil.App.csproj",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/app.manifest",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.Core/EmeraldVeil.Core.csproj",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "tests/EmeraldVeil.Core.Tests/EmeraldVeil.Core.Tests.csproj",
+        "state_text": "已跟踪"
+      }
+    ]
+  },
+  "size": {
+    "docs_chars": 17299,
+    "code_lines": 5870,
+    "code_chars": 180896,
+    "at": "2026-11-16T03:23:45.775550+00:00"
+  },
+  "artifacts": [
+    {
+      "at": "2026-09-08T22:46:21-07:00",
+      "kind": "image",
+      "title": "雨林黑猫 · 电脑壁纸 4K",
+      "status": "completed",
+      "public": "same",
+      "open": {
+        "source": "emerald.artifact.desktop",
+        "href": "https://github.com/wlyaaaaa/emerald-veil/blob/main/assets/verdant-rain-4k.png"
+      }
+    },
+    {
+      "at": "2026-09-08T23:25:01-07:00",
+      "kind": "image",
+      "title": "翠幕精灵 · 手机壁纸",
+      "status": "completed",
+      "public": "same",
+      "open": {
+        "source": "emerald.artifact.mobile",
+        "href": "https://github.com/wlyaaaaa/emerald-veil/blob/main/assets/mobile-wallpaper/emerald-elf-1440x3200.png"
+      }
+    }
+  ],
+  "at": "2026-11-16T03:23:45.775550+00:00"
+}

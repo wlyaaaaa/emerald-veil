@@ -27,6 +27,9 @@ internal sealed class VeilController : IAsyncDisposable
     private string? _lastMonitorError;
     private VeilMode _desiredMode;
     private bool _applyQueued;
+    private ulong _nextLiveTick64;
+    private volatile bool _liveQueued;
+    private readonly DateTimeOffset _started = Process.GetCurrentProcess().StartTime.ToUniversalTime();
 
     internal VeilController(VeilWindow window, IIdleInputSource inputSource, TimeSpan activationDelay)
     {
@@ -154,6 +157,12 @@ internal sealed class VeilController : IAsyncDisposable
                 // Display-specific blackout exclusion belongs to the display resolver;
                 // it must not freeze the shared user-session idle clock.
                 QueueMode(_policy.Evaluate(observation, suppressed, preview));
+                if (sample.CurrentTick64 >= _nextLiveTick64 && !_liveQueued)
+                {
+                    _nextLiveTick64 = sample.CurrentTick64 + 2_000;
+                    _liveQueued = true;
+                    _ = _window.Dispatcher.InvokeAsync(() => { _liveQueued = false; LiveSnapshot.Write(ReadStatus(), _started); }, DispatcherPriority.Background);
+                }
             }
             catch (Exception exception)
             {
