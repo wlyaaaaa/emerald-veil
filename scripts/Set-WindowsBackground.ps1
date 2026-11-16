@@ -12,7 +12,7 @@ function Write-BackgroundLive($State) {
     $value = [ordered]@{ v=1; at=[DateTimeOffset]::UtcNow.ToString('o'); scope='本次壁纸和锁屏只读核验，含已记忆的离线屏；不代表泡泡画面验收'; metrics=@{
         background=if ($null -eq $State) { $null } elseif ($State.desktopMatches -and $State.lockScreenMatches) { '是' } else { '不是' }
         wallpaper_monitors=if ($null -eq $State) { $null } else { @{text=('{0}/{1} 块壁纸匹配' -f @($State.desktopMonitors | Where-Object matches).Count,$State.desktopMonitors.Count); matched=@($State.desktopMonitors | Where-Object matches).Count; total=$State.desktopMonitors.Count} }
-    }; note=if ($null -eq $State) { 'Windows 核验未完成，不能当成壁纸漂移或零处不对' } else { '只在 Apply/Verify 时更新；外部更换壁纸后须重新核验' } }
+    }; note=if ($null -eq $State) { 'Windows 核验未完成，不能当成壁纸漂移或零处不对' } else { '本次 Apply/Verify 实测；PCConfig 现有后台每 30 秒重新核验' } }
     try {
         [IO.Directory]::CreateDirectory((Split-Path -Parent $LiveOutput)) | Out-Null
         [IO.File]::WriteAllText("$LiveOutput.tmp",($value | ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
