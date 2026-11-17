@@ -15,7 +15,7 @@
     {"id":"session","label":"这次开着以来","source":"emerald.live","pointer":"/metrics/session","time":"/at","scope":"/session_scope","mode":"live","unit":"","public":"same","stale_after":5,"about":"这几天它真试过吗、出过错吗？"},
     {"id":"last_failure","label":"上次出的什么错","source":"emerald.live","pointer":"/metrics/last_failure","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"hide_zero":true,"about":"是屏的事还是程序的事？","note":"出错数大于 0 才显示；仅输出人话，不含路径。"},
     {"id":"retry","label":"出错后还会自己再试吗","source":"emerald.live","pointer":"/metrics/retry","time":"/at","mode":"live","unit":"","public":"same","stale_after":5,"about":"有了合适的屏它会不会自己恢复？"},
-    {"id":"background","label":"壁纸和锁屏还是选好的那张","source":"emerald.background","pointer":"/metrics/background","time":"/at","mode":"live","unit":"","public":"same","stale_after":90,"about":"我的壁纸锁屏还是那张吗？","note":"null 表示查不到，不能当成零处不对；现有后台每 30 秒核验，也可按需 Verify。"},
+    {"id":"background","label":"壁纸和锁屏还是选好的那张","source":"emerald.background","pointer":"/metrics/background","time":"/at","mode":"live","unit":"","public":"same","stale_after":90,"about":"我的壁纸锁屏还是那张吗？","note":"每 30 秒自动检查一次"},
     {"id":"consecutive_failures","label":"当前连续画面故障","source":"emerald.live","pointer":"/metrics/consecutive_failures","time":"/at","mode":"live","unit":"次","public":"same","stale_after":5,"about":"好奇","note":"目标或恢复状态变化会重置；零不等于从没出错。"},
     {"id":"wallpaper_monitors","label":"核验时壁纸匹配的屏幕","source":"emerald.background","pointer":"/metrics/wallpaper_monitors","time":"/at","mode":"live","unit":"","public":"same","stale_after":90,"about":"好奇","note":"包含 Windows 记住的离线屏幕，不是当前实体目标总数。"},
     {"id":"docs_files","label":"自有文档文件","source":"emerald.static","pointer":"/metrics/docs_files","records":"/records/docs_files","time":"/at","mode":"static","unit":"份","public":"same","shape":"list","about":"好奇"},
@@ -24,9 +24,9 @@
     {"id":"tracked_files","label":"Git 跟踪文件","source":"emerald.static","pointer":"/metrics/tracked_files","time":"/at","mode":"static","unit":"份","public":"same","about":"好奇"}
   ],
   "sections": [
-    {"id":"bubbles","label":"泡泡屏保","metrics":["status","enabled","target","hotkey","session","last_failure","retry"],"about":"开关、目标与本次常驻的实测状态。","note":"试放／出错只算这一次程序开着以来，起始时间见该行 scope；重启清零，不能写成一共，也不能算成功率。上次出的错不代表此刻还在错。"},
-    {"id":"background","label":"壁纸和锁屏","metrics":["background"],"about":"独立核验选定图片。","note":"泡泡状态不代替壁纸核验；这里只证明图片内容与设置，不代表已经亲眼看过锁屏。"},
-    {"id":"more-data","label":"更多数据","metrics":["consecutive_failures","wallpaper_monitors","docs_files","code_files","config_files","tracked_files"],"about":"好奇：恢复计数、核验范围和仓库文件构成。","note":"文件统计按需更新，带取数时刻、不因过一天报旧；点开才读取文件列表。"}
+    {"id":"bubbles","label":"泡泡屏保","metrics":["status","enabled","target","hotkey","session","last_failure","retry"],"about":"开关、目标与本次常驻的实测状态。","note":"只计本次启动以来的次数"},
+    {"id":"background","label":"壁纸和锁屏","metrics":["background"],"about":"独立核验选定图片。","note":"壁纸和锁屏设置检查结果"},
+    {"id":"more-data","label":"更多数据","metrics":["consecutive_failures","wallpaper_monitors","docs_files","code_files","config_files","tracked_files"],"about":"好奇：恢复计数、核验范围和仓库文件构成。","note":"点开查看文件清单"}
   ],
   "artifacts": {"source":"emerald.static","pointer":"/artifacts"},
   "size": {"source":"emerald.static","pointer":"/size"},
