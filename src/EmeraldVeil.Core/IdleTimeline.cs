@@ -9,14 +9,21 @@ public sealed class IdleTimeline
     private bool _reliable;
     private uint _lastInputTick32;
     private ulong _lastActivityTick64;
+    private ulong _lastGamepadActivityTick64;
     private ulong _lastSampleTick64;
 
     public IdleObservation Observe(
         bool inputReadSucceeded,
         uint currentTick32,
         ulong currentTick64,
-        uint lastInputTick32)
+        uint lastInputTick32,
+        bool gamepadActive = false)
     {
+        if (currentTick64 < _lastGamepadActivityTick64)
+            _lastGamepadActivityTick64 = 0;
+        if (gamepadActive)
+            _lastGamepadActivityTick64 = currentTick64;
+
         if (!inputReadSucceeded)
         {
             _reliable = false;
@@ -73,8 +80,9 @@ public sealed class IdleTimeline
 
     private IdleObservation ReliableObservation(ulong currentTick64)
     {
-        var elapsedMilliseconds = currentTick64 >= _lastActivityTick64
-            ? currentTick64 - _lastActivityTick64
+        var lastActivity = Math.Max(_lastActivityTick64, _lastGamepadActivityTick64);
+        var elapsedMilliseconds = currentTick64 >= lastActivity
+            ? currentTick64 - lastActivity
             : 0;
 
         return new IdleObservation(

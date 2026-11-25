@@ -78,6 +78,23 @@ public sealed class IdleTimelineTests
     }
 
     [Fact]
+    public void GamepadActivityRestartsAutomaticScreenSaverDelayWithoutKeyboardInput()
+    {
+        var timeline = new IdleTimeline();
+        var policy = new VeilActivationPolicy(TimeSpan.FromMinutes(6));
+
+        VeilMode ModeAt(uint tick, bool gamepadActive = false) =>
+            policy.Evaluate(timeline.Observe(true, tick, tick, 1_000, gamepadActive),
+                suppressActivation: false, previewRequested: false);
+
+        Assert.Equal(VeilMode.Idle, ModeAt(361_000));
+        Assert.Equal(VeilMode.Hidden, ModeAt(361_050, gamepadActive: true));
+        Assert.Equal(VeilMode.Hidden, ModeAt(721_050, gamepadActive: true));
+        Assert.Equal(VeilMode.Hidden, ModeAt(1_081_049));
+        Assert.Equal(VeilMode.Idle, ModeAt(1_081_050));
+    }
+
+    [Fact]
     public void ReadFailureIsNeverReportedAsIdle()
     {
         var timeline = new IdleTimeline();

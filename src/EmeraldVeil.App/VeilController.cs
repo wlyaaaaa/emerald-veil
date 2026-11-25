@@ -13,6 +13,7 @@ internal sealed class VeilController : IAsyncDisposable
     private readonly VeilWindow _window;
     private readonly IIdleInputSource _inputSource;
     private readonly IdleTimeline _timeline = new();
+    private readonly GamepadActivity _gamepad = new();
     private readonly VeilActivationPolicy _policy;
     private readonly VeilModeReconciler _reconciler = new(RendererRecoveryDelay, Stopwatch.Frequency);
     private readonly CancellationTokenSource _cancellation = new();
@@ -141,8 +142,9 @@ internal sealed class VeilController : IAsyncDisposable
             try
             {
                 var sample = _inputSource.Read();
+                bool gamepadActive = _gamepad.IsActive(sample.CurrentTick64);
                 var observation = _timeline.Observe(sample.Succeeded, sample.CurrentTick32,
-                    sample.CurrentTick64, sample.LastInputTick32);
+                    sample.CurrentTick64, sample.LastInputTick32, gamepadActive);
                 MaintainRuntimePolicy(sample.CurrentTick64);
                 bool suppressed;
                 bool preview;
@@ -151,7 +153,7 @@ internal sealed class VeilController : IAsyncDisposable
                     _lastObservation = observation;
                     suppressed = !NativeBubblesSettings.IsEnabled();
                     preview = _preview.Observe(sample.Succeeded, sample.LastInputTick32,
-                        sample.CurrentTick64, allowed: !suppressed);
+                        sample.CurrentTick64, allowed: !suppressed && !gamepadActive);
                     suppressed |= !preview && sample.CurrentTick64 < _suppressIdleUntilTick64;
                 }
                 // Display-specific blackout exclusion belongs to the display resolver;
