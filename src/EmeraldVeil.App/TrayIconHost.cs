@@ -99,16 +99,33 @@ internal sealed class TrayIconHost : IDisposable
     {
         var status = System.Text.Json.JsonSerializer.SerializeToElement(_controller.ReadStatus());
         var presentation = status.GetProperty("presentation");
-        string target = presentation.GetProperty("eligibleTarget").GetString() ?? "当前没有可用的实体主屏，保持待命";
-        string state = presentation.GetProperty("state").GetString() ?? "unknown";
-        string text = $"原生泡泡：{(status.GetProperty("enabled").GetBoolean() ? "已开启" : "已禁用")}\n" +
-            "范围：实体桌面屏；VDD 和仪表屏不显示屏保。\n" +
-            $"目标：{target}\n空闲：{status.GetProperty("idleSeconds").GetDouble():0} 秒 / {_controller.ActivationDelay.TotalSeconds:0} 秒\n" +
-            $"状态：{state}\n" +
-            "快捷键：Ctrl+Win+E 立即启动；键鼠输入、禁用或退出均会撤掉屏保；不锁屏、不停止动态壁纸。";
+        string target = presentation.GetProperty("eligibleTarget").GetString()?.Replace(@"\\.\", "") ?? "无可用目标";
+        string state = presentation.GetProperty("state").GetString() switch
+        {
+            "disabled" => "已停用",
+            "waiting-for-idle" => "等待空闲",
+            "initializing" => "正在启动",
+            "visible" => "正在显示",
+            "no-eligible-physical-display" => "等待可用屏幕",
+            "retry-cooldown" => "稍后重试",
+            "waiting-for-input-or-manual-retry" => "等待操作后再试",
+            "background-source-changed" => "壁纸来源已变化",
+            "display-target-changed" => "目标屏已变化",
+            _ => "状态待确认",
+        };
+        bool enabled = status.GetProperty("enabled").GetBoolean();
+        var page = new Forms.TaskDialogPage
+        {
+            Caption = "翠幕屏保",
+            Heading = enabled ? "屏保已启用" : "屏保已停用",
+            AllowCancel = true,
+            Text = $"现在：{state}\n显示：仅实体桌面屏 · {target}\n已空闲 {status.GetProperty("idleSeconds").GetDouble():0} 秒，启动门槛 {_controller.ActivationDelay.TotalSeconds:0} 秒",
+            Footnote = new("Ctrl+Win+E 立即启动 · 有操作即退出\n保持壁纸运行，不锁屏。"),
+            Buttons = { Forms.TaskDialogButton.Close },
+        };
         if (presentation.GetProperty("lastFailure").GetString() is { Length: > 0 } failure)
-            text += "\n最近一次失败：" + failure;
-        _ = System.Windows.MessageBox.Show(text, "Emerald Veil 状态", MessageBoxButton.OK, MessageBoxImage.Information);
+            page.Expander = new("最近一次失败：" + failure) { CollapsedButtonText = "查看上次失败", ExpandedButtonText = "收起" };
+        Forms.TaskDialog.ShowDialog(page);
     }
 
     private static Icon CreateEmeraldIcon()
