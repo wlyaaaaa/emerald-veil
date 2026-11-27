@@ -8,8 +8,33 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Read-BubblesIdleDelay {
+    # Read the resident over the same current-user status channel as --status.
+    $sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
+    $pipe = [IO.Pipes.NamedPipeClientStream]::new(
+        '.', "EmeraldVeil.Control.$sessionId", [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::Asynchronous)
+    $reader = $null
+    try {
+        $pipe.Connect(400)
+        $request = [Text.Encoding]::UTF8.GetBytes("status`n")
+        $pipe.Write($request, 0, $request.Length)
+        $reader = [IO.StreamReader]::new($pipe, [Text.Encoding]::UTF8)
+        $output = $reader.ReadToEndAsync()
+        if (-not $output.Wait(2500)) { return }
+        $status = $output.Result | ConvertFrom-Json
+        if ($status.schema -eq 'emerald-veil.status.v1' -and $status.activationSeconds -gt 0) {
+            return @{ seconds = $status.activationSeconds; at = [DateTimeOffset]::UtcNow.ToString('o') }
+        }
+    } catch { return }
+    finally { if ($reader) { $reader.Dispose() } else { $pipe.Dispose() } }
+}
+
 function Write-BackgroundLive($State) {
-    $value = [ordered]@{ v=1; at=[DateTimeOffset]::UtcNow.ToString('o'); scope='壁纸和锁屏检查'; metrics=@{
+    $at = [DateTimeOffset]::UtcNow.ToString('o')
+    $idle = Read-BubblesIdleDelay
+    $value = [ordered]@{ v=1; at=$at; scope='壁纸和锁屏检查'; times=@{idle_seconds=if ($idle) { $idle.at } else { $null }};
+        scopes=@{idle_seconds='现役常驻程序正在采用的闲置等待时间'}; metrics=@{
+        idle_seconds=if ($idle) { $idle.seconds } else { $null }
         background=if ($null -eq $State) { $null } elseif ($State.desktopMatches -and $State.lockScreenMatches) { '是' } else { '不是' }
         wallpaper_monitors=if ($null -eq $State) { $null } else { @{text=('{0}/{1} 块壁纸匹配' -f @($State.desktopMonitors | Where-Object matches).Count,$State.desktopMonitors.Count); matched=@($State.desktopMonitors | Where-Object matches).Count; total=$State.desktopMonitors.Count} }
     }; note=if ($null -eq $State) { 'Windows 核验未完成，不能当成壁纸漂移或零处不对' } else { '本次 Apply/Verify 实测；PCConfig 现有后台每 30 秒重新核验' } }
