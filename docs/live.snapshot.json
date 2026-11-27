@@ -3,9 +3,9 @@
   "scope": "按需统计 Git 跟踪的自有文档、源码和配置；不含生成物及第三方",
   "metrics": {
     "docs_files": 7,
-    "code_files": 47,
+    "code_files": 48,
     "config_files": 7,
-    "tracked_files": 67
+    "tracked_files": 68
   },
   "records": {
     "docs_files": [
@@ -77,6 +77,10 @@
       },
       {
         "text": "src/EmeraldVeil.App/DisplayTargetResolver.cs",
+        "state_text": "已跟踪"
+      },
+      {
+        "text": "src/EmeraldVeil.App/GamepadActivity.cs",
         "state_text": "已跟踪"
       },
       {
@@ -260,10 +264,10 @@
     ]
   },
   "size": {
-    "docs_chars": 17299,
-    "code_lines": 5870,
-    "code_chars": 180880,
-    "at": "2026-11-24T20:15:17.546545+00:00"
+    "docs_chars": 17762,
+    "code_lines": 5987,
+    "code_chars": 184449,
+    "at": "2026-11-27T23:22:07.527684+00:00"
   },
   "artifacts": [
     {
@@ -289,5 +293,5 @@
       }
     }
   ],
-  "at": "2026-11-24T20:15:17.546545+00:00"
+  "at": "2026-11-27T23:22:07.527684+00:00"
 }
