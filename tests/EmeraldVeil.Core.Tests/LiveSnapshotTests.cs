@@ -18,7 +18,7 @@ public class LiveSnapshotTests
             launchCount = 3, failureCount = 2, consecutiveFailures = 0, lastFailure = @"C:\PRIVATE\failed.png" } });
         string json = JsonSerializer.Serialize(LiveSnapshot.Project(status, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch));
         var metrics = JsonDocument.Parse(json).RootElement.GetProperty("metrics");
-        Assert.Equal(expected, metrics.GetProperty("status").GetString());
+        Assert.Equal(expected, (metrics.GetProperty("status") is { ValueKind: JsonValueKind.Object } headline ? headline.GetProperty("text") : metrics.GetProperty("status")).GetString());
         Assert.Equal(3, metrics.GetProperty("session").GetProperty("attempts").GetInt32());
         Assert.Equal(2, metrics.GetProperty("session").GetProperty("failures").GetInt32());
         Assert.DoesNotContain("PRIVATE", json);
